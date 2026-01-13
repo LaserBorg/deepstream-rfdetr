@@ -116,28 +116,38 @@ gst-launch-1.0 -e filesrc location=/opt/nvidia/deepstream/deepstream/samples/str
   perf ! fakesink
 ```
 
-| Platform | DeepStream | Model         | Batch | Precision | FPS |
-|----------|------------|---------------|-------|-----------|-----|
-| AGX Orin | 7.0        | rfdetr-nano   | 1     | FP32      | 127 |
-| AGX Orin | 7.0        | rfdetr-small  | 1     | FP32      | 69  |
-| AGX Orin | 7.0        | rfdetr-medium | 1     | FP32      | 52  |
-| AGX Orin | 7.0        | rfdetr-large  | 1     | FP32      | 16  |
-| AGX Orin | 7.0        | rfdetr-base   | 1     | FP32      | 47  |
-| AGX Orin | 7.0        | rfdetr-nano   | 1     | FP16      | 238 (\*) |
-| AGX Orin | 7.0        | rfdetr-small  | 1     | FP16      | 151 (\*)(\*\*) |
-| AGX Orin | 7.0        | rfdetr-medium | 1     | FP16      | 121 (\*)(\*\*) |
-| AGX Orin | 7.0        | rfdetr-large  | 1     | FP16      | 43 (\*)(\*\*\*) |
-| AGX Orin | 7.0        | rfdetr-base   | 1     | FP16      | 124 (\*)(\*\*\*) |
-| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP32      | 266 |
-| DGX Spark | 8.0        | rfdetr-small  | 1     | FP32      | 135 |
-| DGX Spark | 8.0        | rfdetr-medium | 1     | FP32      | 102 |
-| DGX Spark | 8.0        | rfdetr-large  | 1     | FP32      | 38 |
-| DGX Spark | 8.0        | rfdetr-base   | 1     | FP32      | 95 |
-| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP16      | 488 |
-| DGX Spark | 8.0        | rfdetr-small  | 1     | FP16      | 270 |
-| DGX Spark | 8.0        | rfdetr-medium | 1     | FP16      | 153 |
-| DGX Spark | 8.0        | rfdetr-large  | 1     | FP16      | 75 (\*\*\*) |
-| DGX Spark | 8.0        | rfdetr-base   | 1     | FP16      | 195 (\*\*\*) |
+| Platform  | DeepStream | Model         | Batch | Precision | FPS              |
+|-----------|------------|---------------|-------|-----------|------------------|
+| AGX Orin  | 7.0        | rfdetr-nano   | 1     | FP32      | 127              |
+| AGX Orin  | 7.0        | rfdetr-small  | 1     | FP32      | 69               |
+| AGX Orin  | 7.0        | rfdetr-medium | 1     | FP32      | 52               |
+| AGX Orin  | 7.0        | rfdetr-large  | 1     | FP32      | 16               |
+| AGX Orin  | 7.0        | rfdetr-base   | 1     | FP32      | 47               |
+| AGX Orin  | 7.0        | rfdetr-nano   | 1     | FP16      | 238 (\*)         |
+| AGX Orin  | 7.0        | rfdetr-small  | 1     | FP16      | 151 (\*)(\*\*)   |
+| AGX Orin  | 7.0        | rfdetr-medium | 1     | FP16      | 121 (\*)(\*\*)   |
+| AGX Orin  | 7.0        | rfdetr-large  | 1     | FP16      | 43 (\*)(\*\*\*)  |
+| AGX Orin  | 7.0        | rfdetr-base   | 1     | FP16      | 124 (\*)(\*\*\*) |
+| AGX Thor  | 8.0        | rfdetr-nano   | 1     | FP32      | 291              |
+| AGX Thor  | 8.0        | rfdetr-small  | 1     | FP32      | 147              |
+| AGX Thor  | 8.0        | rfdetr-medium | 1     | FP32      | 108              |
+| AGX Thor  | 8.0        | rfdetr-large  | 1     | FP32      | 42               |
+| AGX Thor  | 8.0        | rfdetr-base   | 1     | FP32      | 104              |
+| AGX Thor  | 8.0        | rfdetr-nano   | 1     | FP16      | 482 (\*)         |
+| AGX Thor  | 8.0        | rfdetr-small  | 1     | FP16      | 380 (\*)         |
+| AGX Thor  | 8.0        | rfdetr-medium | 1     | FP16      | 304 (\*)         |
+| AGX Thor  | 8.0        | rfdetr-large  | 1     | FP16      | 134 (\*)(\**)    |
+| AGX Thor  | 8.0        | rfdetr-base   | 1     | FP16      | 319 (\*)(\**)    |
+| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP32      | 266              |
+| DGX Spark | 8.0        | rfdetr-small  | 1     | FP32      | 135              |
+| DGX Spark | 8.0        | rfdetr-medium | 1     | FP32      | 102              |
+| DGX Spark | 8.0        | rfdetr-large  | 1     | FP32      | 38               |
+| DGX Spark | 8.0        | rfdetr-base   | 1     | FP32      | 95               |
+| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP16      | 488              |
+| DGX Spark | 8.0        | rfdetr-small  | 1     | FP16      | 270              |
+| DGX Spark | 8.0        | rfdetr-medium | 1     | FP16      | 153              |
+| DGX Spark | 8.0        | rfdetr-large  | 1     | FP16      | 75 (\*\*\*)      |
+| DGX Spark | 8.0        | rfdetr-base   | 1     | FP16      | 195 (\*\*\*)     |
 
 **(\*)**: Detection quality is degraded considerably, make sure to compare.
 
