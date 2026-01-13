@@ -128,6 +128,16 @@ gst-launch-1.0 -e filesrc location=/opt/nvidia/deepstream/deepstream/samples/str
 | AGX Orin | 7.0        | rfdetr-medium | 1     | FP16      | 121 (\*)(\*\*) |
 | AGX Orin | 7.0        | rfdetr-large  | 1     | FP16      | 43 (\*)(\*\*\*) |
 | AGX Orin | 7.0        | rfdetr-base   | 1     | FP16      | 124 (\*)(\*\*\*) |
+| AGX Thor | 8.0        | rfdetr-nano   | 1     | FP32      | 291 |
+| AGX Thor | 8.0        | rfdetr-small  | 1     | FP32      | 147 |
+| AGX Thor | 8.0        | rfdetr-medium | 1     | FP32      | 108 |
+| AGX Thor | 8.0        | rfdetr-large  | 1     | FP32      | 42 |
+| AGX Thor | 8.0        | rfdetr-base   | 1     | FP32      | 104 |
+| AGX Thor | 8.0        | rfdetr-nano   | 1     | FP16      | 482 (\*) |
+| AGX Thor | 8.0        | rfdetr-small  | 1     | FP16      | 380 (\*) |
+| AGX Thor | 8.0        | rfdetr-medium | 1     | FP16      | 304 (\*) |
+| AGX Thor | 8.0        | rfdetr-large  | 1     | FP16      | 134 (\*)(\**) |
+| AGX Thor | 8.0        | rfdetr-base   | 1     | FP16      | 319 (\*)(\**) |
 | DGX Spark | 8.0        | rfdetr-nano   | 1     | FP32      | 266 |
 | DGX Spark | 8.0        | rfdetr-small  | 1     | FP32      | 135 |
 | DGX Spark | 8.0        | rfdetr-medium | 1     | FP32      | 102 |
