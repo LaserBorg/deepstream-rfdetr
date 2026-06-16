@@ -2,16 +2,21 @@
 # /// script
 # requires-python = "<=3.13"
 # dependencies = [
-#     "inference",
+#     "inference == 1.3.1",
 # ]
 # ///
 
-import sys
 import shutil
+import sys
+import tempfile
 
-from inference import get_model
 from inference.models.aliases import RFDETR_ALIASES
+from inference_models.developer_tools import (
+    get_model_from_provider,
+    download_files_to_directory,
+)
 from pathlib import Path
+
 
 
 def usage():
@@ -30,15 +35,42 @@ if model_id not in RFDETR_ALIASES.keys():
     usage()
     sys.exit(1)
 
-print(f"Downloading {model_id}...")
-model = get_model(model_id)
-
-src = Path(model.cache_dir) / model.weights_file
 dst = Path.cwd() / f"{model_id}.onnx"
 
 if dst.exists():
     print(f"{dst} already exists. Can't overwrite", file=sys.stderr)
     sys.exit(1)
 
-shutil.copy2(src, dst)
+print(f"Downloading {model_id}...")
+
+metadata = get_model_from_provider(
+    model_id=model_id,
+    provider="roboflow",
+)
+
+package = next(
+    p
+    for p in metadata.model_packages
+    if p.onnx_package_details is not None
+)
+
+files = [
+    (f.file_handle, f.download_url, f.md5_hash)
+    for f in package.package_artefacts if f.file_handle.endswith(".onnx")
+]
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    paths = download_files_to_directory(
+        target_dir=tmpdir,
+        files_specs=files,
+    )
+
+    src = next(
+        Path(path)
+        for path in paths.values()
+        if Path(path).suffix == ".onnx"
+    )
+
+    shutil.move(src, dst)
+
 print(f"Successfully downloaded {dst}")
