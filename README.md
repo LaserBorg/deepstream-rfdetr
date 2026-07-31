@@ -1,166 +1,160 @@
-# DeepStream RF-DETR
+# DeepStream RF-DETR — Orin Nano Super
 
-> Run RF-DETR on NVIDIA DeepStream
+Run [RF-DETR](https://github.com/roboflow/rf-detr) object detection on NVIDIA
+DeepStream, tailored for the **Jetson Orin Nano Super (8 GB)** with
+**JetPack 7.2**.
 
-This project provides the necessary parsing libraries and configuration files
-that enable running RF-DETR models on NVIDIA DeepStream pipelines.
+Forked from [RidgeRun/deepstream-rfdetr](https://github.com/ridgerun/deepstream-rfdetr)
+and stripped down to a single target platform.
 
-At the time being, the following features are supported:
-- [x] RF-DETR Nano, Small, Medium, Large
-- [x] FP32, FP16
+## Target Platform
 
-The following features are a work in progress:
-- [ ] INT8 calibration files
-- [ ] RF-DETR for segmentation
-- [ ] DLA validation
+| Component    | Version / Detail                          |
+|--------------|-------------------------------------------|
+| Board        | Jetson Orin Nano Super 8 GB (p3767-0005)  |
+| GPU arch     | Ampere, sm_87                             |
+| JetPack      | 7.2 GA (L4T R39.2.0)                     |
+| OS           | Ubuntu 24.04 (Noble)                      |
+| DeepStream   | 9.1                                       |
+| TensorRT     | 10.16.2                                   |
+| CUDA         | 13.2                                      |
+| Compiler     | GCC 13.3.0, C++20                         |
 
-## Supported DeepStream Versions
+> **Note:** The Orin Nano Super has no DLA cores and no hardware video
+> encoder. Use `x264enc` (software) for file output pipelines.
 
-The project has been tested on the following DeepStream versions:
-- DeepStream 8.0
-- DeepStream 7.0
+## Quick Start
 
-## Building the Project
+### 1. Install DeepStream
 
-In a system with DeepStream installed:
+```bash
+# install uv (once)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```bash
+sudo apt update && sudo apt install -y deepstream-9.1
+```
+
+This pulls in TensorRT, cuDNN, and all required GStreamer plugins.
+If you also need `nvcc` (e.g. building PyTorch from source):
+
+```bash
+sudo apt install -y cuda-toolkit-13-2
+```
+
+### 2. Build the parser library
+
 ```bash
 make
 ```
 
-This will generate:
-```
-libdeepstream-rfdetr.so
-```
+Produces `libdeepstream-rfdetr.so`.
 
-This is the library that must be configured in the `custom-lib-path` property of
-the NvInfer.
-
-## Downloading Pretrained Weights
-
-The official RF-DETR weights are hosted by Roboflow and exposed via
-ephemeral URLs. The recommended method is to use their `inference`
-package to do so. We provide a small utility to download weights:
-
-1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if you havent.
-
-2. Download the weights by running:
-```bash
-uv run ./download_weights.py MODEL_ID
-```
-where `MODEL_ID` is one of:
-- rfdetr-base (deprecated)
-- rfdetr-nano
-- rfdetr-small
-- rfdetr-medium
-- rfdetr-large
-
-The script will download the weights to the current working directory
-as `MODEL_ID.onnx`.
-
-## Using RF-DETR in DeepStream
-
-An example configuration file for NvInfer is provided in
-[deepstream_rfdetr_bbox_config.txt](/deepstream_rfdetr_bbox_config.txt).
-
-The specific fields that make RF-DETR work are:
-- net-scale-factor
-- offsets
-- custom-lib-path
-- parse-bbox-func-name
-- onnx-file / model-engine-file
-- num-detected-classes
-- model-color-format
-- network-type
-- maintain-aspect-ratio
-- cluster-mode
-- network-input-order
-
-This config file works fine with DeepStream sample apps. A very simple pipeline
-that performs inference using RF-DETR over a file, and saves the result to a
-file is:
+### 3. set model size and precision
 
 ```bash
-gst-launch-1.0 -e filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 \
-    ! decodebin ! queue ! mux.sink_0 \
-    nvstreammux name=mux width=1920 height=1080 batch-size=1 ! \
-    nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! \
-    queue ! nvdsosd ! nvv4l2h264enc ! h264parse ! queue ! mp4mux ! \
-    filesink location=OUTPUT.mp4
+# Download weights & configure
+make setup  # defaults: rfdetr-small, fp16
 ```
 
-Remember to adjust the `nvstreammux` width and height properties to match the
-image size of your input video.
-
-### Switching Between Model Sizes
-
-The config file uses RF-DETR Nano by default. To change it to a
-different model size, modify the following properties in the config:
-- onnx-file=/path/to/**\<model-id\>**.onnx
-- model-engine-file=/path/to/**\<model-id\>**.onnx_b1_gpu0_fp32.engine
-
-where **\<model-id\>** is one of the ID's listed above. You'll need to
-adjust the **b1** (batch size) nand **fp32** (precision) portions of
-the engine according to the values set in **batch-size** and
-**network-mode** properties, respectively.
-
-## Performance 
-
-Every benchmark below was done using the following pipeline. You can
-get the [perf](https://github.com/ridgerun/gst-perf) from GitHub.
+Or edit modelsize / precision in the `Makefile`:
 
 ```bash
-gst-launch-1.0 -e filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 ! \
-  decodebin ! queue ! mux.sink_0 \
+make setup MODEL=rfdetr-medium PRECISION=fp32
+```
+
+This downloads the ONNX into `checkpoints/` and updates the nvinfer config
+to point at it. Available models: `rfdetr-nano`, `rfdetr-small`,
+`rfdetr-medium`, `rfdetr-large`.
+
+### 4. Run inference
+
+```bash
+gst-launch-1.0 -e \
+  filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 \
+  ! decodebin ! queue ! mux.sink_0 \
+  nvstreammux name=mux width=1920 height=1080 batch-size=1 ! \
+  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! \
+  queue ! nvdsosd ! nvvideoconvert ! x264enc ! h264parse ! mp4mux ! \
+  filesink location=output.mp4
+```
+
+Adjust `nvstreammux` width/height to match your input resolution.
+
+DeepStream sources and samples: `/opt/nvidia/deepstream/deepstream-9.1`
+
+### 5. Inference-only benchmark (no encoding overhead)
+
+```bash
+gst-launch-1.0 -e \
+  filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 \
+  ! decodebin ! queue ! mux.sink_0 \
   nvstreammux name=mux width=1920 height=1080 batch-size=1 ! queue ! \
   nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! \
-  perf ! fakesink
+  queue ! fakesink
 ```
 
-| Platform  | DeepStream | Model         | Batch | Precision | FPS              |
-|-----------|------------|---------------|-------|-----------|------------------|
-| AGX Orin  | 7.0        | rfdetr-nano   | 1     | FP32      | 127              |
-| AGX Orin  | 7.0        | rfdetr-small  | 1     | FP32      | 69               |
-| AGX Orin  | 7.0        | rfdetr-medium | 1     | FP32      | 52               |
-| AGX Orin  | 7.0        | rfdetr-large  | 1     | FP32      | 16               |
-| AGX Orin  | 7.0        | rfdetr-base   | 1     | FP32      | 47               |
-| AGX Orin  | 7.0        | rfdetr-nano   | 1     | FP16      | 238 (\*)         |
-| AGX Orin  | 7.0        | rfdetr-small  | 1     | FP16      | 151 (\*)(\*\*)   |
-| AGX Orin  | 7.0        | rfdetr-medium | 1     | FP16      | 121 (\*)(\*\*)   |
-| AGX Orin  | 7.0        | rfdetr-large  | 1     | FP16      | 43 (\*)(\*\*\*)  |
-| AGX Orin  | 7.0        | rfdetr-base   | 1     | FP16      | 124 (\*)(\*\*\*) |
-| AGX Thor  | 8.0        | rfdetr-nano   | 1     | FP32      | 291              |
-| AGX Thor  | 8.0        | rfdetr-small  | 1     | FP32      | 147              |
-| AGX Thor  | 8.0        | rfdetr-medium | 1     | FP32      | 108              |
-| AGX Thor  | 8.0        | rfdetr-large  | 1     | FP32      | 42               |
-| AGX Thor  | 8.0        | rfdetr-base   | 1     | FP32      | 104              |
-| AGX Thor  | 8.0        | rfdetr-nano   | 1     | FP16      | 482 (\*)         |
-| AGX Thor  | 8.0        | rfdetr-small  | 1     | FP16      | 380 (\*)         |
-| AGX Thor  | 8.0        | rfdetr-medium | 1     | FP16      | 304 (\*)         |
-| AGX Thor  | 8.0        | rfdetr-large  | 1     | FP16      | 134 (\*)(\**)    |
-| AGX Thor  | 8.0        | rfdetr-base   | 1     | FP16      | 319 (\*)(\**)    |
-| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP32      | 266              |
-| DGX Spark | 8.0        | rfdetr-small  | 1     | FP32      | 135              |
-| DGX Spark | 8.0        | rfdetr-medium | 1     | FP32      | 102              |
-| DGX Spark | 8.0        | rfdetr-large  | 1     | FP32      | 38               |
-| DGX Spark | 8.0        | rfdetr-base   | 1     | FP32      | 95               |
-| DGX Spark | 8.0        | rfdetr-nano   | 1     | FP16      | 488              |
-| DGX Spark | 8.0        | rfdetr-small  | 1     | FP16      | 270              |
-| DGX Spark | 8.0        | rfdetr-medium | 1     | FP16      | 153              |
-| DGX Spark | 8.0        | rfdetr-large  | 1     | FP16      | 75 (\*\*\*)      |
-| DGX Spark | 8.0        | rfdetr-base   | 1     | FP16      | 195 (\*\*\*)     |
+## Performance (Orin Nano Super, 25 W mode)
 
-**(\*)**: Detection quality is degraded considerably, make sure to compare.
+Measured with the fakesink pipeline above on the 1080p30 sample clip
+(48.1 s = 1443 frames, includes HW decode overhead).
 
-**(\*\*)TRT Warning**: TensorRT encountered issues when converting weights
-between types and that could affect accuracy.
+| Model         | Precision | Inference FPS | w/ FHD x264 encoding |
+|---------------|-----------|---------------|----------------------|
+| rfdetr-nano   | FP16      | 154           | —                    |
+| rfdetr-small  | FP16      | 90            | —                    |
+| rfdetr-medium | FP16      | 72            | 28                   |
 
-**(\*\*\*) TRT Warning**: Running layernorm after self-attention in FP16 may
-cause overflow.
+> FP16 engine build takes a few minutes on first run. Detection quality may
+> degrade slightly in FP16 — validate for your use case.
 
-## Notes for Maintainers
+## Switching Models / Precision
 
-- Build the project as `make DEV=1`. This will build in debug mode, as
-  well as not allowing warnings.
-- Format the code by running `make format`.
-- Lint the code by running `make lint`.
-- Make sure all these three are clean before submitting a PR.
+```bash
+make setup MODEL=rfdetr-medium PRECISION=fp16
+```
+
+This downloads the weights (if not already present) and rewrites
+`deepstream_rfdetr_bbox_config.txt` for you. You can also run the steps
+individually:
+
+```bash
+make weights MODEL=rfdetr-medium   # download only
+make config  MODEL=rfdetr-medium PRECISION=fp16  # update config only
+```
+
+> **Note:** All paths in the config are relative to the config file's
+> directory. Model files live in `checkpoints/`; the `.so` and labels stay
+> in the project root. The TensorRT engine is built automatically on first
+> run and cached in `checkpoints/`.
+
+## Key Config Properties
+
+| Property               | Value / Purpose                              |
+|------------------------|----------------------------------------------|
+| `net-scale-factor`     | `0.0173520736` (1/255/avg_std)               |
+| `offsets`              | `123.675;116.28;103.53` (ImageNet means×255) |
+| `custom-lib-path`      | `libdeepstream-rfdetr.so` (relative to config) |
+| `parse-bbox-func-name` | `deepstream_rfdetr_bbox`                     |
+| `num-detected-classes` | `91` (COCO 90 + background)                  |
+| `model-color-format`   | `0` (RGB)                                    |
+| `network-type`         | `0` (Detector)                               |
+| `cluster-mode`         | `4` (no clustering — DETR is set-based)      |
+| `maintain-aspect-ratio`| `1`                                          |
+| `symmetric-padding`    | `1`                                          |
+| `network-input-order`  | `0` (NCHW)                                   |
+
+## Development
+
+```bash
+make DEV=1      # debug build, -Werror
+make format     # clang-format
+make lint       # clang-tidy
+make clean
+```
+
+## License
+
+MIT — see [LICENSE.txt](LICENSE.txt).
+

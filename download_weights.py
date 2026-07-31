@@ -2,7 +2,7 @@
 # /// script
 # requires-python = "<=3.13"
 # dependencies = [
-#     "inference == 1.3.1",
+#     "inference == 1.3.7",
 # ]
 # ///
 
@@ -35,11 +35,13 @@ if model_id not in RFDETR_ALIASES.keys():
     usage()
     sys.exit(1)
 
-dst = Path.cwd() / f"{model_id}.onnx"
+dst_dir = Path(__file__).parent / "checkpoints"
+dst_dir.mkdir(exist_ok=True)
+dst = dst_dir / f"{model_id}.onnx"
 
 if dst.exists():
-    print(f"{dst} already exists. Can't overwrite", file=sys.stderr)
-    sys.exit(1)
+    print(f"{dst} already exists, skipping download.")
+    sys.exit(0)
 
 print(f"Downloading {model_id}...")
 

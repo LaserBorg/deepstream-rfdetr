@@ -165,7 +165,7 @@ input-tensor-from-meta=0
 # Primary/Secondary: Both
 #
 # RF-DETR: based on the onnx name and current configuration
-model-engine-file=rfdetr-nano.onnx_b1_gpu0_fp32.engine
+model-engine-file=checkpoints/rfdetr-small.onnx_b1_gpu0_fp16.engine
 
 ##########
 # onnx-file:
@@ -177,7 +177,7 @@ model-engine-file=rfdetr-nano.onnx_b1_gpu0_fp32.engine
 # Network type: All
 # Primary/Secondary: Both
 #
-onnx-file=rfdetr-nano.onnx
+onnx-file=checkpoints/rfdetr-small.onnx
 
 ##########
 # enable-dbscan:
@@ -309,7 +309,7 @@ gie-unique-id=1
 # Network type: All
 # Primary/Secondary: Both
 #
-network-mode=0
+network-mode=2
 
 ##########
 # offsets:

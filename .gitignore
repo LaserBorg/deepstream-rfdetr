@@ -1,6 +1,13 @@
+# vs code configs
+.vscode/
+
 *~
 \#*
 *.o
 *.so
-*.onnx
-*.engine
+
+# onnx and engine checkpoints
+checkpoints/*
+
+# video
+OUTPUT*.mp4

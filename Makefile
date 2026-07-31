@@ -21,11 +21,18 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-VERSION := 0.1.0
+VERSION := 0.1.1
 
 DS_HOME ?= /opt/nvidia/deepstream/deepstream/
 CUDA_HOME ?= /usr/local/cuda/
 DEV ?= 0
+
+# MODEL CONFIGURATION
+# rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
+MODEL ?= rfdetr-small
+# fp16 | fp32
+PRECISION ?= fp16
+CONFIG := deepstream_rfdetr_bbox_config.txt
 
 CXXFLAGS := -Wall -std=c++20 -fPIC -O3
 
@@ -45,7 +52,7 @@ TARGET := libdeepstream-rfdetr.so
 SRCS := deepstream_rfdetr_bbox.cpp
 OBJS := $(SRCS:.cpp=.o)
 
-.PHONY: all clean lint format version
+.PHONY: all clean lint format version weights config setup
 
 all: $(TARGET)
 
@@ -66,3 +73,17 @@ format:
 
 version:
 	@echo "DeepStream RF-DETR $(VERSION)"
+
+weights:
+	uv run ./download_weights.py $(MODEL)
+
+config:
+	@# Map precision name to network-mode integer
+	$(eval MODE=$(if $(filter fp32,$(PRECISION)),0,$(if $(filter fp16,$(PRECISION)),2,$(error PRECISION must be fp32 or fp16))))
+	sed -i 's|^onnx-file=.*|onnx-file=checkpoints/$(MODEL).onnx|' $(CONFIG)
+	sed -i 's|^model-engine-file=.*|model-engine-file=checkpoints/$(MODEL).onnx_b1_gpu0_$(PRECISION).engine|' $(CONFIG)
+	sed -i 's|^network-mode=.*|network-mode=$(MODE)|' $(CONFIG)
+	@echo "Config updated: MODEL=$(MODEL) PRECISION=$(PRECISION) (network-mode=$(MODE))"
+
+setup: weights config
+	@echo "Ready to run with $(MODEL) / $(PRECISION)"
