@@ -25,7 +25,7 @@ and stripped down to a single target platform.
 
 ## Quick Start
 
-### 1. Install DeepStream
+### 1. Installation
 
 ```bash
 # install uv (once)
@@ -42,6 +42,21 @@ If you also need `nvcc` (e.g. building PyTorch from source):
 ```bash
 sudo apt install -y cuda-toolkit-13-2
 ```
+
+```bash
+# optional: install gstreamer plugins
+sudo apt install gstreamer1.0-plugins-good
+```
+
+```bash
+# install MediaMTX
+cd /tmp
+curl -sL "https://github.com/bluenviron/mediamtx/releases/download/v1.19.3/mediamtx_v1.19.3_linux_arm64.tar.gz" \
+  -o mediamtx.tar.gz
+tar xzf mediamtx.tar.gz
+sudo mv mediamtx /usr/local/bin/
+```
+
 
 ### 2. Build the parser library
 
@@ -84,7 +99,7 @@ Adjust `nvstreammux` width/height to match your input resolution.
 
 DeepStream sources and samples: `/opt/nvidia/deepstream/deepstream-9.1`
 
-### 5. Inference-only benchmark (no encoding overhead)
+### 5. Inference-only (no video encoding overhead)
 
 ```bash
 gst-launch-1.0 -e \
@@ -103,7 +118,7 @@ Measured with the fakesink pipeline above on the 1080p30 sample clip
 | Model         | Precision | Inference FPS | w/ FHD x264 encoding |
 |---------------|-----------|---------------|----------------------|
 | rfdetr-nano   | FP16      | 154           | —                    |
-| rfdetr-small  | FP16      | 90            | —                    |
+| rfdetr-small  | FP16      | 90            | 24.8                 |
 | rfdetr-medium | FP16      | 72            | 28                   |
 
 > FP16 engine build takes a few minutes on first run. Detection quality may
@@ -154,7 +169,12 @@ make lint       # clang-tidy
 make clean
 ```
 
-## License
+## Jetson Performance Mode
 
-MIT — see [LICENSE.txt](LICENSE.txt).
+For maximum inference throughput, switch to the highest power mode and lock
+clocks before running the pipeline:
 
+```bash
+sudo nvpmodel -m 2   # MAX_N_SUPER
+sudo jetson_clocks
+```

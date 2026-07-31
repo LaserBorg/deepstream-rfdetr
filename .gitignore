@@ -10,4 +10,11 @@
 checkpoints/*
 
 # video
-OUTPUT*.mp4
+output**.mp4
+
+# mediamtx certificates
+auto.crt
+auto.key
+
+# failed attempts
+_old/
