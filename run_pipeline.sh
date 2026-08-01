@@ -93,7 +93,16 @@ try:
         source.get("file_uri", ""),
         model["size"],
         model["precision"],
-        source["stream_offset_seconds"],
+        ";".join(str(class_id) for class_id in model.get("class_ids", [])),
+        config.get("tracking", {}).get("algorithm", "NvSORT"),
+        config.get("tracking", {}).get("detector_threshold", 0.5),
+        config.get("tracking", {}).get("min_detector_confidence", 0.5),
+        config.get("tracking", {}).get("min_iou_diff_new_target", 0.5),
+        config.get("tracking", {}).get("min_tracker_confidence", 0.5),
+        config.get("tracking", {}).get("probation_age", 4),
+        config.get("tracking", {}).get("max_shadow_tracking_age", 38),
+        config.get("tracking", {}).get("min_matching_iou", 0.0),
+        source.get("stream_offset_seconds", 0),
         runtime["hls_segment_duration_seconds"],
         runtime["file_segment_duration_seconds"],
         runtime["capture_duration_seconds"],
@@ -123,33 +132,42 @@ for value in values:
 PY
 )
 
-[[ ${#config_values[@]} -eq 26 ]] || { echo 'Unable to read pipeline configuration.' >&2; exit 2; }
+[[ ${#config_values[@]} -eq 35 ]] || { echo 'Unable to read pipeline configuration.' >&2; exit 2; }
 source_type=${config_values[0]}
 hls_uri=${config_values[1]}
 file_uri=${config_values[2]}
 model_size=${config_values[3]}
 model_precision=${config_values[4]}
-stream_offset_seconds=${config_values[5]}
-hls_segment_duration_seconds=${config_values[6]}
-file_segment_duration_seconds=${config_values[7]}
-capture_duration_seconds=${config_values[8]}
-grace_seconds=${config_values[9]}
-identity_sync=${config_values[10]}
-batch_size=${config_values[11]}
-mux_width=${config_values[12]}
-mux_height=${config_values[13]}
-rtsp_port=${config_values[14]}
-rtsp_mount_point=${config_values[15]}
-output_width=${config_values[16]}
-output_height=${config_values[17]}
-bitrate_mbps=${config_values[18]}
-iframeinterval=${config_values[19]}
-profile=${config_values[20]}
-mqtt_topic=${config_values[21]}
-mqtt_host=${config_values[22]}
-mqtt_port=${config_values[23]}
-mqtt_username=${config_values[24]}
-mqtt_password=${config_values[25]}
+class_ids=${config_values[5]}
+tracker_algorithm=${config_values[6]}
+detector_threshold=${config_values[7]}
+min_detector_confidence=${config_values[8]}
+min_iou_diff_new_target=${config_values[9]}
+min_tracker_confidence=${config_values[10]}
+probation_age=${config_values[11]}
+max_shadow_tracking_age=${config_values[12]}
+min_matching_iou=${config_values[13]}
+stream_offset_seconds=${config_values[14]}
+hls_segment_duration_seconds=${config_values[15]}
+file_segment_duration_seconds=${config_values[16]}
+capture_duration_seconds=${config_values[17]}
+grace_seconds=${config_values[18]}
+identity_sync=${config_values[19]}
+batch_size=${config_values[20]}
+mux_width=${config_values[21]}
+mux_height=${config_values[22]}
+rtsp_port=${config_values[23]}
+rtsp_mount_point=${config_values[24]}
+output_width=${config_values[25]}
+output_height=${config_values[26]}
+bitrate_mbps=${config_values[27]}
+iframeinterval=${config_values[28]}
+profile=${config_values[29]}
+mqtt_topic=${config_values[30]}
+mqtt_host=${config_values[31]}
+mqtt_port=${config_values[32]}
+mqtt_username=${config_values[33]}
+mqtt_password=${config_values[34]}
 deepstream_home="${DS_HOME:-/opt/nvidia/deepstream/deepstream-9.1}"
 mqtt_proto_lib="$deepstream_home/lib/libnvds_mqtt_proto.so"
 msgconv_lib="$project_root/librfdetrmsgconv.so"
@@ -162,6 +180,64 @@ msgconv_lib="$project_root/librfdetrmsgconv.so"
   echo 'model.precision must be fp16 or fp32.' >&2
   exit 2
 }
+excluded_class_ids=$(python3 - "$class_ids" <<'PY'
+import sys
+
+selected = {int(value) for value in sys.argv[1].split(";") if value}
+if any(class_id < 1 or class_id > 90 for class_id in selected):
+    raise SystemExit("model.class_ids must contain COCO class IDs from 1 through 90.")
+print(";".join(str(class_id) for class_id in range(1, 91) if class_id not in selected) if selected else "")
+PY
+)
+awk -v excluded="$excluded_class_ids" 'BEGIN { updated = 0 } /^#?filter-out-class-ids=/ { if (excluded == "") print "#filter-out-class-ids="; else print "filter-out-class-ids=" excluded; updated = 1; next } { print } END { if (!updated && excluded != "") print "filter-out-class-ids=" excluded }' \
+  deepstream_rfdetr_bbox_config.txt > deepstream_rfdetr_bbox_config.txt.tmp
+mv deepstream_rfdetr_bbox_config.txt.tmp deepstream_rfdetr_bbox_config.txt
+for threshold in "$detector_threshold" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$min_matching_iou"; do
+  [[ "$threshold" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] &&
+    awk -v value="$threshold" 'BEGIN { exit !(value >= 0 && value <= 1) }' || {
+    echo 'Tracking thresholds must be in the range 0..1.' >&2
+    exit 2
+  }
+done
+[[ "$probation_age" =~ ^[0-9]+$ && "$probation_age" -gt 0 ]] || { echo 'tracking.probation_age must be a positive integer.' >&2; exit 2; }
+[[ "$max_shadow_tracking_age" =~ ^[0-9]+$ && "$max_shadow_tracking_age" -gt 0 ]] || { echo 'tracking.max_shadow_tracking_age must be a positive integer.' >&2; exit 2; }
+awk -v threshold="$detector_threshold" 'BEGIN { updated = 0 } /^pre-cluster-threshold=/ { print "pre-cluster-threshold=" threshold; updated = 1; next } { print } END { if (!updated) exit 1 }' \
+  deepstream_rfdetr_bbox_config.txt > deepstream_rfdetr_bbox_config.txt.tmp
+mv deepstream_rfdetr_bbox_config.txt.tmp deepstream_rfdetr_bbox_config.txt
+case "$tracker_algorithm" in
+  NvSORT) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvSORT.yml" ;;
+  IOU) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_IOU.yml" ;;
+  NvDCF) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvDCF_accuracy.yml" ;;
+  NvDeepSORT) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvDeepSORT.yml" ;;
+  *) echo 'tracking.algorithm must be NvSORT, IOU, NvDCF, or NvDeepSORT.' >&2; exit 2 ;;
+esac
+[[ -f "$tracker_config" ]] || { echo "Native tracker config not found: $tracker_config" >&2; exit 2; }
+tracker_runtime_config=$(mktemp --suffix=.yml)
+python3 - "$tracker_config" "$tracker_runtime_config" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$probation_age" "$max_shadow_tracking_age" "$min_matching_iou" <<'PY'
+import re
+import sys
+
+source, destination, min_detector, min_iou_new, min_tracker, probation, shadow_age, matching_iou = sys.argv[1:]
+replacements = {
+  "BaseConfig.minDetectorConfidence": min_detector,
+  "TargetManagement.minIouDiff4NewTarget": min_iou_new,
+  "TargetManagement.minTrackerConfidence": min_tracker,
+  "TargetManagement.probationAge": probation,
+  "TargetManagement.maxShadowTrackingAge": shadow_age,
+  "DataAssociator.minMatchingScore4Iou": matching_iou,
+}
+section = None
+with open(source, encoding="utf-8") as input_file, open(destination, "w", encoding="utf-8") as output_file:
+  for line in input_file:
+    section_match = re.match(r"^([A-Za-z]+):\s*$", line)
+    if section_match:
+      section = section_match.group(1)
+    key = line.split("#", 1)[0].split(":", 1)[0].strip()
+    replacement_key = f"{section}.{key}"
+    if replacement_key in replacements:
+      line = re.sub(r"(^\s*" + re.escape(key) + r"\s*:\s*)[^#\n]+", r"\g<1>" + replacements[replacement_key] + " ", line)
+    output_file.write(line)
+PY
 [[ "$identity_sync" == true || "$identity_sync" == false ]] || {
   echo 'runtime.identity_sync must be true or false.' >&2
   exit 2
@@ -301,6 +377,7 @@ cleanup() {
   [[ -z "$mediamtx_runtime_config" ]] || rm -f "$mediamtx_runtime_config"
   [[ -z "$mqtt_msgconv_config" ]] || rm -f "$mqtt_msgconv_config"
   [[ -z "$mqtt_broker_config" ]] || rm -f "$mqtt_broker_config"
+  [[ -z "${tracker_runtime_config:-}" ]] || rm -f "$tracker_runtime_config"
 }
 
 trap 'cleanup; exit 130' INT TERM HUP
@@ -340,20 +417,22 @@ PY
 fi
 
 if [[ "$source_type" == hls ]]; then
-  playlist="/tmp/tears-of-steel-from-${stream_offset_seconds}s.m3u8"
-  manifest_base=${hls_uri%/*}
-  {
-    printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n' \
-      "$hls_segment_duration_seconds" "$media_sequence"
-    curl -L --fail --max-time 15 -sS "$hls_uri" |
-      awk -v base="$manifest_base/" -v start_sequence="$media_sequence" '
-        BEGIN { segment = 0 }
-        /^#EXTINF:/ { segment++; if (segment >= start_sequence) { print; keep = 1 }; next }
-        /^tears-of-steel-/ { if (keep) { print base $0; keep = 0 }; next }
-        /^#EXT-X-ENDLIST/ { print }
-      '
-  } > "$playlist"
-  input_uri="file://$playlist"
+  if [[ "$stream_offset_seconds" -gt 0 ]]; then
+    playlist="/tmp/tears-of-steel-from-${stream_offset_seconds}s.m3u8"
+    manifest_base=${hls_uri%/*}
+    {
+      printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n' \
+        "$hls_segment_duration_seconds" "$media_sequence"
+      curl -L --fail --max-time 15 -sS "$hls_uri" |
+        awk -v base="$manifest_base/" -v start_sequence="$media_sequence" '
+          BEGIN { segment = 0 }
+          /^#EXTINF:/ { segment++; if (segment >= start_sequence) { print; keep = 1 }; next }
+          /^tears-of-steel-/ { if (keep) { print base $0; keep = 0 }; next }
+          /^#EXT-X-ENDLIST/ { print }
+        '
+    } > "$playlist"
+    input_uri="file://$playlist"
+  fi
 fi
 
 umask 077
@@ -376,12 +455,14 @@ EOF
 
 pipeline=(
   gst-launch-1.0 -e
-  uridecodebin uri="$input_uri" name=src
-  src. ! 'video/x-raw(ANY)' ! queue ! identity sync="$identity_sync" ! nvvideoconvert
+  nvurisrcbin uri="$input_uri" disable-audio=true name=src
+  src. ! queue ! identity sync="$identity_sync" ! nvvideoconvert
   ! 'video/x-raw(memory:NVMM),format=NV12' ! mux.sink_0
-  src. ! 'audio/x-raw(ANY)' ! queue ! fakesink sync=false
   nvstreammux name=mux width="$mux_width" height="$mux_height" batch-size="$batch_size" batched-push-timeout=40000 !
-  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! rfdetrmsgmeta frame-interval=1 ! tee name=msgtee
+  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt !
+  nvtracker ll-lib-file="$deepstream_home/lib/libnvds_nvmultiobjecttracker.so"
+  ll-config-file="$tracker_runtime_config" tracker-width="$mux_width" tracker-height="$mux_height"
+  display-tracking-id=true ! rfdetrmsgmeta frame-interval=1 ! tee name=msgtee
   msgtee. ! queue ! nvmsgconv config="$mqtt_msgconv_config" msg2p-lib="$msgconv_lib" payload-type=257 multiple-payloads=false frame-interval=1 !
   nvmsgbroker proto-lib="$mqtt_proto_lib"
   config="$mqtt_broker_config" conn-str="$mqtt_host;$mqtt_port" topic="$mqtt_topic" sync=false
@@ -432,9 +513,11 @@ stop_process "$mediamtx_pid"
 [[ -z "$mediamtx_runtime_config" ]] || rm -f "$mediamtx_runtime_config"
 [[ -z "$mqtt_msgconv_config" ]] || rm -f "$mqtt_msgconv_config"
 [[ -z "$mqtt_broker_config" ]] || rm -f "$mqtt_broker_config"
+[[ -z "$tracker_runtime_config" ]] || rm -f "$tracker_runtime_config"
 mediamtx_runtime_config=''
 mqtt_msgconv_config=''
 mqtt_broker_config=''
+tracker_runtime_config=''
 trap - INT TERM HUP
 
 printf 'Pipeline exited with status %d\n' "$pipeline_status"

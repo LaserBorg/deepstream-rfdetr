@@ -1,12 +1,22 @@
 source:
   type: "hls"      # "hls" | "file" | "csi" (CSI is not implemented yet)
-  hls_uri: "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/tears-of-steel-audio_eng=128002-video_eng=1001000.m3u8"
-  stream_offset_seconds: 180
+  hls_uri: "https://stream-5gw.1000eyes.de/cupertino/hamDDFBCE.stream/playlist.m3u8"
   file_uri: "file:///opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4"      # Use a file:// URI when type is "file"
 
 model:
-  size: "rfdetr-small"       # rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
+  size: "rfdetr-medium"       # rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
   precision: "fp16"           # fp16 | fp32
+  class_ids: [1, 3, 6, 5]      # COCO IDs to keep: person, car, bus, airplane; use [] to keep all classes
+
+tracking:
+  algorithm: "NvSORT"         # NvSORT | IOU | NvDCF | NvDeepSORT
+  detector_threshold: 0.5      # RF-DETR detections below this confidence are discarded
+  min_detector_confidence: 0.5 # Native tracker input confidence floor
+  min_iou_diff_new_target: 0.5780
+  min_tracker_confidence: 0.8216
+  probation_age: 5
+  max_shadow_tracking_age: 26
+  min_matching_iou: 0.2159
 
 csi_camera:
   sensor_id: 0

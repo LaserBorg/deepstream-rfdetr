@@ -102,6 +102,7 @@ static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
       detection.width = object_meta->rect_params.width;
       detection.height = object_meta->rect_params.height;
       detection.confidence = object_meta->confidence;
+      detection.tracking_id = object_meta->object_id;
     }
 
     auto *event = static_cast<NvDsEventMsgMeta *>(g_malloc0(sizeof(NvDsEventMsgMeta)));

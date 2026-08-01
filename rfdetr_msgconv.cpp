@@ -70,6 +70,7 @@ void append_detection(GString *json, const RfdetrDetection *detection,
   append_json_string(json, class_name != nullptr ? class_name : "unknown");
   g_string_append(json, ",\"confidence\":");
   g_string_append(json, g_ascii_dtostr(number, sizeof(number), detection->confidence));
+  g_string_append_printf(json, ",\"track_id\":%" G_GUINT64_FORMAT, detection->tracking_id);
   g_string_append_c(json, '}');
 }
 
@@ -114,7 +115,8 @@ NvDsPayload *make_payload(const NvDsEvent *events, guint size,
           events[index].metadata->bbox.top,
           events[index].metadata->bbox.width,
           events[index].metadata->bbox.height,
-          events[index].metadata->confidence};
+          events[index].metadata->confidence,
+          events[index].metadata->trackingId};
       if (!first_detection) {
         g_string_append_c(json, ',');
       }

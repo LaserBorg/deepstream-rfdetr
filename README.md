@@ -7,6 +7,8 @@ DeepStream, tailored for the **Jetson Orin Nano Super (8 GB)** with
 Forked from [RidgeRun/deepstream-rfdetr](https://github.com/ridgerun/deepstream-rfdetr)
 and stripped down to a single target platform.
 
+![tracker](docs/track.jpg)
+
 ## Target Platform
 
 | Component    | Version / Detail                          |
@@ -50,6 +52,7 @@ sudo apt install -y \
   gstreamer1.0-plugins-bad \
   gstreamer1.0-plugins-ugly \
   gstreamer1.0-libav
+  libgstrtspserver-1.0-0
 ```
 
 The pipeline connects to HiveMQ, so a local Mosquitto broker service is not
@@ -105,7 +108,13 @@ The runtime model is selected in `pipeline_config.yml`:
 model:
   size: "rfdetr-small"
   precision: "fp16"
+  class_ids: [1, 3]
 ```
+
+`model.class_ids` is the COCO class allowlist. For example, `[1, 3]` keeps
+only `person` and `car`; use `[]` to keep all classes. The runner translates
+the allowlist into DeepStream's `filter-out-class-ids` setting before starting
+the pipeline.
 
 When `run_pipeline.sh` starts, it runs `make setup` with these YAML values.
 That downloads the ONNX if needed and updates the nvinfer config before
@@ -133,13 +142,17 @@ DeepStream sources and samples: `/opt/nvidia/deepstream/deepstream-9.1`
 
 Configure the input, streammux resolution, RTSP endpoint, output resolution,
 and x264 encoder in
-`pipeline_config.yml`. The default input is the Tears of Steel HLS stream;
-audio is discarded. `source.type` supports `hls` and `file`; `csi` is reserved
+`pipeline_config.yml`. The default input is a public webcam HLS stream; audio
+is discarded. `source.type` supports `hls` and `file`; `csi` is reserved
 for a future camera input. For a file input, set `source.type: file` and
 provide a `file://` URI in `source.file_uri`.
 
-The default HLS input is Tears of Steel. It starts at the configured 180-second
-offset, aligned to its four-second HLS segment boundary. The input defaults to
+The default HLS input is the configured public webcam. The runner uses
+DeepStream's `nvurisrcbin` with audio disabled, which is suited to this live
+HLS source. When
+`source.stream_offset_seconds` is omitted or set to `0`, the runner passes the
+live HLS playlist directly to GStreamer. The offset-based manifest slicing is
+only used for the legacy Tears of Steel source. The input defaults to
 `source.type` in `pipeline_config.yml`; override it for one run with
 `--input file` or `--input hls`:
 
@@ -170,8 +183,8 @@ WEBRTC_ADDITIONAL_HOSTS=192.168.1.75 ./run_pipeline.sh --input hls --output webr
 ```
 
 
-All timing values are seconds. Defaults are a 180-second stream offset,
-60-second file segments, and a two-minute capture. The corresponding YAML
+All timing values are seconds. Defaults are no stream offset, 60-second file
+segments, and a two-minute capture. The corresponding YAML
 values can be overridden for one run with environment variables:
 
 Set `runtime.identity_sync: false` in `pipeline_config.yml` to process file
@@ -196,6 +209,42 @@ For troubleshooting, restore verbose output with:
 GST_LAUNCH_QUIET=false MEDIAMTX_LOG_LEVEL=info \
   ./run_pipeline.sh --input hls --output webrtc
 ```
+
+### Native DeepStream Tracking
+
+The pipeline uses NVIDIA's native `nvtracker` plugin after RF-DETR inference.
+Select the low-level tracker in `pipeline_config.yml`:
+
+```yaml
+tracking:
+  algorithm: "NvSORT"
+  detector_threshold: 0.3
+  min_detector_confidence: 0.3
+  min_iou_diff_new_target: 0.5780
+  min_tracker_confidence: 0.8216
+  probation_age: 5
+  max_shadow_tracking_age: 26
+  min_matching_iou: 0.2159
+```
+
+Available tracker configurations installed with DeepStream 9.1 are:
+
+| Configuration | Behavior |
+|---------------|----------|
+| `NvSORT`      | Lightweight motion and IoU association; recommended default on the Orin Nano |
+| `IOU`         | Simplest IoU-only association and lowest overhead |
+| `NvDCF`       | Correlation-filter tracking with stronger short-term occlusion handling |
+| `NvDeepSORT`  | Appearance-aware tracking using re-identification; highest resource use |
+
+The tracker writes IDs directly into DeepStream object metadata. The custom
+metadata bridge copies those IDs into the MQTT payload as `track_id`.
+
+`detector_threshold` controls RF-DETR detections before they reach the tracker.
+The remaining values are native tracker thresholds: the detector confidence
+floor, IoU required when creating a new target, tracker confidence below which
+an object becomes a shadow track, the probation period, the maximum shadow
+tracking age, and the minimum IoU association score. Some values are not used
+by simpler configurations such as `IOU`.
 
 ### 6. MQTT Detection Publishing
 

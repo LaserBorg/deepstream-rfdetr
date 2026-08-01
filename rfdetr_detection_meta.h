@@ -10,6 +10,7 @@ typedef struct {
   gfloat width;
   gfloat height;
   gdouble confidence;
+  guint64 tracking_id;
 } RfdetrDetection;
 
 typedef struct {
