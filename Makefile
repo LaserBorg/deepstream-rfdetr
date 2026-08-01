@@ -51,13 +51,20 @@ TARGET := libdeepstream-rfdetr.so
 
 SRCS := deepstream_rfdetr_bbox.cpp
 OBJS := $(SRCS:.cpp=.o)
+MSG_META_TARGET := libgstrfdetrmsgmeta.so
 
 .PHONY: all clean lint format version weights config setup
 
-all: $(TARGET)
+all: $(TARGET) $(MSG_META_TARGET)
 
 $(TARGET): $(OBJS) Makefile
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
+
+$(MSG_META_TARGET): deepstream_rfdetr_msgmeta.cpp Makefile
+	$(CXX) $(CXXFLAGS) $(shell pkg-config --cflags gstreamer-1.0 gstreamer-base-1.0) \
+		-o $@ deepstream_rfdetr_msgmeta.cpp $(LDFLAGS) \
+		-L$(DS_HOME)/lib -lnvds_meta -lnvdsgst_meta \
+		$(shell pkg-config --libs gstreamer-1.0 gstreamer-base-1.0)
 
 %.o: %.cpp Makefile
 	$(CXX) $(CXXFLAGS) -c $< -o $@

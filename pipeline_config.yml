@@ -1,0 +1,56 @@
+source:
+  type: "hls"      # "hls" | "file" | "csi" (CSI is not implemented yet)
+  hls_uri: "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/tears-of-steel-audio_eng=128002-video_eng=1001000.m3u8"
+  stream_offset_seconds: 180
+  file_uri: "file:///opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4"      # Use a file:// URI when type is "file"
+
+model:
+  size: "rfdetr-small"       # rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
+  precision: "fp16"           # fp16 | fp32
+
+csi_camera:
+  sensor_id: 0
+  width: 1920
+  height: 1080
+  fps: 30
+  flip_method: 2  # 0: none, 2: rotate 180
+
+streammux:
+  batch_size: 1
+  width: 640
+  height: 360
+
+runtime:
+  hls_segment_duration_seconds: 4
+  file_segment_duration_seconds: 60
+  capture_duration_seconds: 120
+  grace_seconds: 10
+  identity_sync: true       # Pace frames to timestamps; set false for fast file processing
+
+outputs:
+  rtsp:
+    port: 8554
+    mount_point: "/deepstream-rfdetr"
+    encoder:
+      width: 640
+      height: 360
+      bitrate_mbps: 2
+      iframeinterval: 30
+      profile: 0
+
+mqtt:
+  topic: "vision/detections"
+  brokers:
+    - name: "mosquitto"
+      host: "192.168.1.10"
+      port: 1883
+      tls: false
+      ca_cert: "mqtt/ca.crt"
+      username: ${SYNOLOGY_MQTT_USER}
+      password: ${SYNOLOGY_MQTT_PASSWORD}
+    - name: "hivemq"
+      host: "ab8139df41f643a5a6cf4d54288bc8f6.s1.eu.hivemq.cloud"
+      port: 8883
+      tls: true
+      username: ${HIVEMQ_MQTT_USER}
+      password: ${HIVEMQ_MQTT_PASSWORD}

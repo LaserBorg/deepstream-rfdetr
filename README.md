@@ -36,6 +36,27 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 sudo apt update && sudo apt install -y deepstream-9.1
 ```
 
+Install the native MQTT runtime and the GStreamer plugin families used by the
+runner. DeepStream supplies its own NVIDIA plugins; these packages supply the
+standard GStreamer elements used around them (`souphttpsrc`, `rtmpsink`,
+`h264parse`, `x264enc`, `flvmux`, and `splitmuxsink`):
+
+```bash
+sudo apt install -y \
+  ca-certificates curl libmosquitto1 mosquitto-clients \
+  gstreamer1.0-tools \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly \
+  gstreamer1.0-libav
+```
+
+The pipeline connects to HiveMQ, so a local Mosquitto broker service is not
+required. `libmosquitto1` is required by DeepStream's native MQTT adaptor;
+`mosquitto-clients` is optional and provides command-line publish/subscribe
+tools for diagnostics.
+
 This pulls in TensorRT, cuDNN, and all required GStreamer plugins.
 If you also need `nvcc` (e.g. building PyTorch from source):
 
@@ -43,9 +64,14 @@ If you also need `nvcc` (e.g. building PyTorch from source):
 sudo apt install -y cuda-toolkit-13-2
 ```
 
+Create or select the Python environment used by the MQTT listener. The
+project uses Conda for the listener and test scripts; `uv` is used separately
+by `make setup` for the isolated model-download script:
+
 ```bash
-# optional: install gstreamer plugins
-sudo apt install gstreamer1.0-plugins-good
+conda create -n py312 python=3.12 -y  # omit if py312 already exists
+conda activate py312
+python -m pip install -r requirements.txt
 ```
 
 ```bash
@@ -66,22 +92,26 @@ make
 
 Produces `libdeepstream-rfdetr.so`.
 
-### 3. set model size and precision
+### 3. Set Up The Model
 
 ```bash
-# Download weights & configure
-make setup  # defaults: rfdetr-small, fp16
+# Download weights and configure the default model
+make setup MODEL=rfdetr-small PRECISION=fp16
 ```
 
-Or edit modelsize / precision in the `Makefile`:
+The runtime model is selected in `pipeline_config.yml`:
 
-```bash
-make setup MODEL=rfdetr-medium PRECISION=fp32
+```yaml
+model:
+  size: "rfdetr-small"
+  precision: "fp16"
 ```
 
-This downloads the ONNX into `checkpoints/` and updates the nvinfer config
-to point at it. Available models: `rfdetr-nano`, `rfdetr-small`,
-`rfdetr-medium`, `rfdetr-large`.
+When `run_pipeline.sh` starts, it runs `make setup` with these YAML values.
+That downloads the ONNX if needed and updates the nvinfer config before
+starting the pipeline. Available models are `rfdetr-nano`, `rfdetr-small`,
+`rfdetr-medium`, and `rfdetr-large`; supported precisions are `fp16` and
+`fp32`.
 
 ### 4. Run inference
 
@@ -99,7 +129,150 @@ Adjust `nvstreammux` width/height to match your input resolution.
 
 DeepStream sources and samples: `/opt/nvidia/deepstream/deepstream-9.1`
 
-### 5. Inference-only (no video encoding overhead)
+### 5. YAML-Controlled Pipeline
+
+Configure the input, streammux resolution, RTSP endpoint, output resolution,
+and x264 encoder in
+`pipeline_config.yml`. The default input is the Tears of Steel HLS stream;
+audio is discarded. `source.type` supports `hls` and `file`; `csi` is reserved
+for a future camera input. For a file input, set `source.type: file` and
+provide a `file://` URI in `source.file_uri`.
+
+The default HLS input is Tears of Steel. It starts at the configured 180-second
+offset, aligned to its four-second HLS segment boundary. The input defaults to
+`source.type` in `pipeline_config.yml`; override it for one run with
+`--input file` or `--input hls`:
+
+```bash
+./run_pipeline.sh --input file --output file
+./run_pipeline.sh --input hls --output webrtc
+./run_pipeline.sh --input hls --output rtsp
+```
+
+`file` writes timestamped MP4 segments. `rtsp` and `webrtc` start MediaMTX when
+needed, publish local RTMP, and serve the stream at the configured endpoint,
+such as `rtsp://192.168.1.71:8554/deepstream-rfdetr` for the default
+configuration. The path
+and port are controlled by `outputs.rtsp.mount_point` and `outputs.rtsp.port`.
+
+RTSP output, for example in VLC:
+`rtsp://192.168.1.71:8554/deepstream-rfdetr`
+
+WebRTC using MediaMTX, for example in a browser:
+`http://192.168.1.71:8889/deepstream-rfdetr`
+
+
+All timing values are seconds. Defaults are a 180-second stream offset,
+60-second file segments, and a two-minute capture. The corresponding YAML
+values can be overridden for one run with environment variables:
+
+Set `runtime.identity_sync: false` in `pipeline_config.yml` to process file
+inputs as quickly as the pipeline allows. Keep it `true` when producing
+real-time HLS, RTSP, or WebRTC playback so frames remain paced to their
+timestamps.
+
+```bash
+STREAM_OFFSET_SECONDS=180 SEGMENT_DURATION_SECONDS=30 CAPTURE_DURATION_SECONDS=120 \
+  ./run_pipeline.sh --output file
+```
+
+The source is paced in real time, so two minutes produces about four MP4 files.
+On stop, the script sends `SIGINT`, then `SIGKILL` after 10 seconds if input is
+blocked; only the active MP4 segment can be incomplete.
+
+The runner suppresses routine GStreamer bus messages and starts a new
+MediaMTX instance with warning-level logging to keep the console readable.
+For troubleshooting, restore verbose output with:
+
+```bash
+GST_LAUNCH_QUIET=false MEDIAMTX_LOG_LEVEL=info \
+  ./run_pipeline.sh --input hls --output webrtc
+```
+
+### 6. MQTT Detection Publishing
+
+The YAML runner publishes one DeepStream detection event per detected object
+to the HiveMQ broker configured under `mqtt.brokers`.
+
+The runner automatically sources the project `.env` file before starting. Make
+sure it contains the HiveMQ credentials:
+
+```bash
+# .env
+HIVEMQ_MQTT_USER='your-hivemq-username'
+HIVEMQ_MQTT_PASSWORD='your-hivemq-password'
+
+./run_pipeline.sh --input hls --output webrtc
+```
+
+The default topic is `vision/detections`. The runner uses DeepStream's
+`nvmsgconv` and `nvmsgbroker` plugins with the installed MQTT protocol adaptor
+and HiveMQ TLS port `8883`. Credentials are written to a restrictive temporary
+file for the lifetime of the process and removed during cleanup.
+
+#### Detection Payload
+
+The runner uses DeepStream's JSON event schema (`payload-type=0`). One MQTT
+message represents one detected object on one frame. The top-level structure is:
+
+```json
+{
+  "messageid": "generated-uuid",
+  "mdsversion": "1.0",
+  "@timestamp": "2026-08-01T13:41:06.123Z",
+  "place": null,
+  "sensor": {
+    "id": "RF-DETR",
+    "type": "Camera",
+    "description": "\"RF-DETR detections\"",
+    "location": {"lat": 0.0, "lon": 0.0, "alt": 0.0},
+    "coordinate": {"x": 0.0, "y": 0.0, "z": 0.0}
+  },
+  "analyticsModule": null,
+  "object": {
+    "id": "18446744073709551615",
+    "speed": 0.0,
+    "direction": 0.0,
+    "orientation": 0.0,
+    "bbox": {
+      "topleftx": 263,
+      "toplefty": 176,
+      "bottomrightx": 320,
+      "bottomrighty": 258
+    },
+    "location": {"lat": 0.0, "lon": 0.0, "alt": 0.0},
+    "coordinate": {"x": 0.0, "y": 0.0, "z": 0.0},
+    "pose": {}
+  },
+  "event": {
+    "id": "generated-uuid",
+    "type": "moving"
+  }
+}
+```
+
+The bounding-box coordinates are pixel coordinates in the source frame.
+`messageid`, event ID, and timestamps are generated for each message. `place`
+and `analyticsModule` are `null` because the runner's temporary converter
+configuration defines only a sensor.
+
+The current bridge attaches the RF-DETR class ID, confidence, frame number,
+and tracking ID to DeepStream metadata. The standard JSON converter exposes
+the bounding box directly, but the current parser does not populate
+`obj_label`, so the class entry is currently serialized as an empty key. The
+value `18446744073709551615` means no tracker has assigned an object ID. Class
+IDs, confidence, and stable tracking IDs require extending the parser/metadata
+bridge and enabling a tracker before they can be consumed as reliable JSON
+fields.
+
+To inspect messages from a second terminal:
+
+```bash
+conda activate py312
+python -u mqtt-listener.py
+```
+
+### 7. Inference-only / Performance Test
 
 ```bash
 gst-launch-1.0 -e \
@@ -127,12 +300,13 @@ Measured with the fakesink pipeline above on the 1080p30 sample clip
 ## Switching Models / Precision
 
 ```bash
-make setup MODEL=rfdetr-medium PRECISION=fp16
+./run_pipeline.sh --input hls --output webrtc
 ```
 
-This downloads the weights (if not already present) and rewrites
-`deepstream_rfdetr_bbox_config.txt` for you. You can also run the steps
-individually:
+Edit `model.size` and `model.precision` in `pipeline_config.yml`; the next
+pipeline start downloads the weights if necessary and rewrites
+`deepstream_rfdetr_bbox_config.txt`. You can still run the setup steps
+manually:
 
 ```bash
 make weights MODEL=rfdetr-medium   # download only

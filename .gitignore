@@ -1,10 +1,16 @@
-# vs code configs
 .vscode/
-
+__pycache__/
 *~
 \#*
 *.o
 *.so
+*.pyc
+
+# secrets
+.env
+
+# test
+mqtt-test.py
 
 # onnx and engine checkpoints
 checkpoints/*
@@ -15,6 +21,3 @@ output**.mp4
 # mediamtx certificates
 auto.crt
 auto.key
-
-# failed attempts
-_old/

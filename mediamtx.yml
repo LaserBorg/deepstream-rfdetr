@@ -1,0 +1,16 @@
+logLevel: info
+logDestinations: [stdout]
+
+rtmp: true
+rtmpAddress: :1935
+
+webrtc: true
+webrtcAddress: :8889
+
+rtsp: true
+rtspAddress: :8554
+hls: false
+srt: false
+
+paths:
+  stream:
