@@ -152,6 +152,7 @@ mqtt_username=${config_values[24]}
 mqtt_password=${config_values[25]}
 deepstream_home="${DS_HOME:-/opt/nvidia/deepstream/deepstream-9.1}"
 mqtt_proto_lib="$deepstream_home/lib/libnvds_mqtt_proto.so"
+msgconv_lib="$project_root/librfdetrmsgconv.so"
 
 [[ "$model_size" == rfdetr-nano || "$model_size" == rfdetr-small || "$model_size" == rfdetr-medium || "$model_size" == rfdetr-large ]] || {
   echo 'model.size must be rfdetr-nano, rfdetr-small, rfdetr-medium, or rfdetr-large.' >&2
@@ -225,6 +226,10 @@ if ldd "$mqtt_proto_lib" 2>/dev/null | grep -q 'not found'; then
   echo '  sudo apt install -y libmosquitto1' >&2
   exit 2
 fi
+[[ -f "$msgconv_lib" ]] || {
+  echo "RF-DETR message converter not found: $msgconv_lib" >&2
+  exit 2
+}
 
 case "$profile" in
   0) x264_profile='baseline' ;;
@@ -350,28 +355,9 @@ fi
 umask 077
 mqtt_msgconv_config=$(mktemp)
 mqtt_broker_config=$(mktemp)
-cat > "$mqtt_msgconv_config" <<'EOF'
-[sensor0]
-enable=1
-type=Camera
-id=RF-DETR
-description="RF-DETR detections"
-[place0]
-enable=1
-id=0
-type=unknown
-name=RF-DETR
-location=0.0;0.0;0.0
-coordinate=0.0;0.0;0.0
-place-sub-field1=RF-DETR
-place-sub-field2=default
-place-sub-field3=default
-[analytics0]
-enable=1
-id=RF-DETR
-description=RF-DETR object detection
-source=RF-DETR
-version=1.0
+cat > "$mqtt_msgconv_config" <<EOF
+[custom]
+labels-file=$project_root/coco91_labels.txt
 EOF
 cat > "$mqtt_broker_config" <<EOF
 [message-broker]
@@ -392,7 +378,7 @@ pipeline=(
   src. ! 'audio/x-raw(ANY)' ! queue ! fakesink sync=false
   nvstreammux name=mux width="$mux_width" height="$mux_height" batch-size="$batch_size" batched-push-timeout=40000 !
   nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! rfdetrmsgmeta frame-interval=1 ! tee name=msgtee
-  msgtee. ! queue ! nvmsgconv config="$mqtt_msgconv_config" payload-type=0 frame-interval=1 !
+  msgtee. ! queue ! nvmsgconv config="$mqtt_msgconv_config" msg2p-lib="$msgconv_lib" payload-type=257 multiple-payloads=false frame-interval=1 !
   nvmsgbroker proto-lib="$mqtt_proto_lib"
   config="$mqtt_broker_config" conn-str="$mqtt_host;$mqtt_port" topic="$mqtt_topic" sync=false
   msgtee. ! queue ! nvdsosd ! nvvideoconvert

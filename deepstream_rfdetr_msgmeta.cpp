@@ -3,6 +3,7 @@
 
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
+#include "rfdetr_detection_meta.h"
 
 #ifndef PACKAGE
 #define PACKAGE "deepstream-rfdetr"
@@ -26,6 +27,11 @@ static void free_event(NvDsEventMsgMeta *event) {
   g_free(event->ts);
   g_free(event->objectId);
   g_free(event->sensorStr);
+  auto *frame_detections = static_cast<RfdetrFrameDetections *>(event->extMsg);
+  if (frame_detections != nullptr) {
+    g_free(frame_detections->detections);
+    g_free(frame_detections);
+  }
   g_free(event);
 }
 
@@ -36,6 +42,15 @@ static gpointer copy_event_meta(gpointer data, gpointer user_data) {
   copy->ts = g_strdup(source_event->ts);
   copy->objectId = g_strdup(source_event->objectId);
   copy->sensorStr = g_strdup(source_event->sensorStr);
+  auto *source_detections = static_cast<RfdetrFrameDetections *>(source_event->extMsg);
+  if (source_detections != nullptr) {
+    auto *copy_detections = static_cast<RfdetrFrameDetections *>(
+        g_memdup2(source_detections, sizeof(*source_detections)));
+    copy_detections->detections = static_cast<RfdetrDetection *>(g_memdup2(
+        source_detections->detections,
+        sizeof(RfdetrDetection) * source_detections->count));
+    copy->extMsg = copy_detections;
+  }
   return copy;
 }
 
@@ -66,35 +81,56 @@ static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
   for (NvDsMetaList *frame_node = batch_meta->frame_meta_list; frame_node != nullptr;
        frame_node = frame_node->next) {
     auto *frame_meta = static_cast<NvDsFrameMeta *>(frame_node->data);
-    for (NvDsMetaList *object_node = frame_meta->obj_meta_list; object_node != nullptr;
-         object_node = object_node->next) {
-      auto *object_meta = static_cast<NvDsObjectMeta *>(object_node->data);
-      auto *event = static_cast<NvDsEventMsgMeta *>(g_malloc0(sizeof(NvDsEventMsgMeta)));
-      event->type = NVDS_EVENT_MOVING;
-      event->objType = NVDS_OBJECT_TYPE_UNKNOWN;
-      event->objClassId = object_meta->class_id;
-      event->bbox.top = object_meta->rect_params.top;
-      event->bbox.left = object_meta->rect_params.left;
-      event->bbox.width = object_meta->rect_params.width;
-      event->bbox.height = object_meta->rect_params.height;
-      event->frameId = frame_meta->frame_num;
-      event->trackingId = object_meta->object_id;
-      event->confidence = object_meta->confidence;
-      event->ts = timestamp_now();
-      event->objectId = g_strdup(object_meta->obj_label);
-      event->sensorStr = g_strdup_printf("source-%u", frame_meta->pad_index);
-
-      NvDsUserMeta *user_meta = nvds_acquire_user_meta_from_pool(batch_meta);
-      if (user_meta == nullptr) {
-        free_event(event);
-        continue;
-      }
-      user_meta->user_meta_data = event;
-      user_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
-      user_meta->base_meta.copy_func = copy_event_meta;
-      user_meta->base_meta.release_func = release_event_meta;
-      nvds_add_user_meta_to_frame(frame_meta, user_meta);
+    if (frame_meta->obj_meta_list == nullptr) {
+      continue;
     }
+    auto *first_object = static_cast<NvDsObjectMeta *>(frame_meta->obj_meta_list->data);
+    auto *frame_detections = static_cast<RfdetrFrameDetections *>(
+        g_malloc0(sizeof(RfdetrFrameDetections)));
+    frame_detections->count = g_list_length(frame_meta->obj_meta_list);
+    frame_detections->detections = static_cast<RfdetrDetection *>(g_malloc0(
+        sizeof(RfdetrDetection) * frame_detections->count));
+
+    guint detection_index = 0;
+    for (NvDsMetaList *object_node = frame_meta->obj_meta_list; object_node != nullptr;
+         object_node = object_node->next, ++detection_index) {
+      auto *object_meta = static_cast<NvDsObjectMeta *>(object_node->data);
+      auto &detection = frame_detections->detections[detection_index];
+      detection.class_id = object_meta->class_id;
+      detection.left = object_meta->rect_params.left;
+      detection.top = object_meta->rect_params.top;
+      detection.width = object_meta->rect_params.width;
+      detection.height = object_meta->rect_params.height;
+      detection.confidence = object_meta->confidence;
+    }
+
+    auto *event = static_cast<NvDsEventMsgMeta *>(g_malloc0(sizeof(NvDsEventMsgMeta)));
+    event->type = NVDS_EVENT_MOVING;
+    event->objType = NVDS_OBJECT_TYPE_UNKNOWN;
+    event->objClassId = first_object->class_id;
+    event->bbox.top = first_object->rect_params.top;
+    event->bbox.left = first_object->rect_params.left;
+    event->bbox.width = first_object->rect_params.width;
+    event->bbox.height = first_object->rect_params.height;
+    event->frameId = frame_meta->frame_num;
+    event->trackingId = first_object->object_id;
+    event->confidence = first_object->confidence;
+    event->ts = timestamp_now();
+    event->objectId = g_strdup(first_object->obj_label);
+    event->sensorStr = g_strdup_printf("source-%u", frame_meta->pad_index);
+    event->extMsg = frame_detections;
+    event->extMsgSize = sizeof(*frame_detections);
+
+    NvDsUserMeta *user_meta = nvds_acquire_user_meta_from_pool(batch_meta);
+    if (user_meta == nullptr) {
+      free_event(event);
+      continue;
+    }
+    user_meta->user_meta_data = event;
+    user_meta->base_meta.meta_type = NVDS_EVENT_MSG_META;
+    user_meta->base_meta.copy_func = copy_event_meta;
+    user_meta->base_meta.release_func = release_event_meta;
+    nvds_add_user_meta_to_frame(frame_meta, user_meta);
   }
   return GST_FLOW_OK;
 }

@@ -212,58 +212,32 @@ file for the lifetime of the process and removed during cleanup.
 
 #### Detection Payload
 
-The runner uses DeepStream's JSON event schema (`payload-type=0`). One MQTT
-message represents one detected object on one frame. The top-level structure is:
+The runner uses a custom compact payload converter. One MQTT message represents
+one detected object on one frame. The payload structure is:
 
 ```json
 {
-  "messageid": "generated-uuid",
-  "mdsversion": "1.0",
-  "@timestamp": "2026-08-01T13:41:06.123Z",
-  "place": null,
-  "sensor": {
-    "id": "RF-DETR",
-    "type": "Camera",
-    "description": "\"RF-DETR detections\"",
-    "location": {"lat": 0.0, "lon": 0.0, "alt": 0.0},
-    "coordinate": {"x": 0.0, "y": 0.0, "z": 0.0}
-  },
-  "analyticsModule": null,
-  "object": {
-    "id": "18446744073709551615",
-    "speed": 0.0,
-    "direction": 0.0,
-    "orientation": 0.0,
-    "bbox": {
-      "topleftx": 263,
-      "toplefty": 176,
-      "bottomrightx": 320,
-      "bottomrighty": 258
+  "timestamp": "2026-08-01T12:05:47.201023Z",
+  "detections": [
+    {
+      "bbox": [56.0, 88.0, 91.0, 121.0],
+      "class": "person",
+      "confidence": 0.934521
     },
-    "location": {"lat": 0.0, "lon": 0.0, "alt": 0.0},
-    "coordinate": {"x": 0.0, "y": 0.0, "z": 0.0},
-    "pose": {}
-  },
-  "event": {
-    "id": "generated-uuid",
-    "type": "moving"
-  }
+    {
+      "bbox": [120.0, 64.0, 183.0, 151.0],
+      "class": "car",
+      "confidence": 0.882104
+    }
+  ]
 }
 ```
 
-The bounding-box coordinates are pixel coordinates in the source frame.
-`messageid`, event ID, and timestamps are generated for each message. `place`
-and `analyticsModule` are `null` because the runner's temporary converter
-configuration defines only a sensor.
-
-The current bridge attaches the RF-DETR class ID, confidence, frame number,
-and tracking ID to DeepStream metadata. The standard JSON converter exposes
-the bounding box directly, but the current parser does not populate
-`obj_label`, so the class entry is currently serialized as an empty key. The
-value `18446744073709551615` means no tracker has assigned an object ID. Class
-IDs, confidence, and stable tracking IDs require extending the parser/metadata
-bridge and enabling a tracker before they can be consumed as reliable JSON
-fields.
+The runner publishes one message per frame. `detections` contains all objects
+detected in that frame. Each `bbox` contains pixel coordinates in
+`[x1, y1, x2, y2]` order. Class names are read from `coco91_labels.txt`, and
+`confidence` is the RF-DETR detection confidence. The timestamp is generated in
+UTC by the metadata bridge.
 
 To inspect messages from a second terminal:
 

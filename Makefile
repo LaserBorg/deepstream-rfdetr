@@ -52,10 +52,11 @@ TARGET := libdeepstream-rfdetr.so
 SRCS := deepstream_rfdetr_bbox.cpp
 OBJS := $(SRCS:.cpp=.o)
 MSG_META_TARGET := libgstrfdetrmsgmeta.so
+MSG_CONV_TARGET := librfdetrmsgconv.so
 
 .PHONY: all clean lint format version weights config setup
 
-all: $(TARGET) $(MSG_META_TARGET)
+all: $(TARGET) $(MSG_META_TARGET) $(MSG_CONV_TARGET)
 
 $(TARGET): $(OBJS) Makefile
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
@@ -65,6 +66,11 @@ $(MSG_META_TARGET): deepstream_rfdetr_msgmeta.cpp Makefile
 		-o $@ deepstream_rfdetr_msgmeta.cpp $(LDFLAGS) \
 		-L$(DS_HOME)/lib -lnvds_meta -lnvdsgst_meta \
 		$(shell pkg-config --libs gstreamer-1.0 gstreamer-base-1.0)
+
+$(MSG_CONV_TARGET): rfdetr_msgconv.cpp Makefile
+	$(CXX) $(CXXFLAGS) -I$(DS_HOME)/sources/libs/nvmsgconv \
+		-o $@ rfdetr_msgconv.cpp $(LDFLAGS) \
+		$(shell pkg-config --cflags --libs glib-2.0)
 
 %.o: %.cpp Makefile
 	$(CXX) $(CXXFLAGS) -c $< -o $@
