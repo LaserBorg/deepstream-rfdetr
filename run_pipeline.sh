@@ -250,6 +250,7 @@ grace_seconds="${GRACE_SECONDS:-$grace_seconds}"
 output_prefix="${OUTPUT_PREFIX:-output-$(date +%Y%m%d-%H%M%S)}"
 mediamtx_config="${MEDIAMTX_CONFIG:-mediamtx.yml}"
 mediamtx_log_level="${MEDIAMTX_LOG_LEVEL:-warn}"
+webrtc_additional_hosts="${WEBRTC_ADDITIONAL_HOSTS:-192.168.1.71}"
 gst_launch_quiet="${GST_LAUNCH_QUIET:-true}"
 rtsp_path=${rtsp_mount_point#/}
 rtmp_url="${RTMP_URL:-rtmp://127.0.0.1:1935/$rtsp_path}"
@@ -306,7 +307,7 @@ trap 'cleanup; exit 130' INT TERM HUP
 
 if [[ "$output" == rtsp || "$output" == webrtc ]] && ! ss -ltn '( sport = :1935 )' | grep -q ':1935'; then
   mediamtx_runtime_config=$(mktemp)
-  python3 - "$mediamtx_config" "$mediamtx_runtime_config" "$rtsp_port" "$rtsp_path" "$mediamtx_log_level" <<'PY'
+  python3 - "$mediamtx_config" "$mediamtx_runtime_config" "$rtsp_port" "$rtsp_path" "$mediamtx_log_level" "$webrtc_additional_hosts" <<'PY'
 import sys
 import yaml
 
@@ -317,6 +318,9 @@ config["rtsp"] = True
 config["rtspAddress"] = f":{sys.argv[3]}"
 config["webrtc"] = True
 config["logLevel"] = sys.argv[5]
+config["webrtcIPsFromInterfaces"] = False
+config["webrtcAdditionalHosts"] = [host.strip() for host in sys.argv[6].split(",") if host.strip()]
+config["webrtcLocalTCPAddress"] = ":8189"
 config["paths"] = {sys.argv[4]: {}}
 
 with open(sys.argv[2], "w", encoding="utf-8") as config_file:

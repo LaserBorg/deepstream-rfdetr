@@ -161,6 +161,14 @@ RTSP output, for example in VLC:
 WebRTC using MediaMTX, for example in a browser:
 `http://192.168.1.71:8889/deepstream-rfdetr`
 
+The runner advertises `192.168.1.71` for WebRTC and enables TCP fallback for
+the ICE connection. If the device is reached through another LAN address, set
+the advertised address before starting the pipeline:
+
+```bash
+WEBRTC_ADDITIONAL_HOSTS=192.168.1.75 ./run_pipeline.sh --input hls --output webrtc
+```
+
 
 All timing values are seconds. Defaults are a 180-second stream offset,
 60-second file segments, and a two-minute capture. The corresponding YAML

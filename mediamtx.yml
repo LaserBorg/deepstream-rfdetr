@@ -6,6 +6,9 @@ rtmpAddress: :1935
 
 webrtc: true
 webrtcAddress: :8889
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: [192.168.1.71]
+webrtcLocalTCPAddress: :8189
 
 rtsp: true
 rtspAddress: :8554
