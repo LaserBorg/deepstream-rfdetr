@@ -24,9 +24,9 @@ now using DeepStream 9.1 and JetPack 7.2 on the Orin Nano (sm_87).
 ./run_pipeline.sh --input hls --output webrtc
 ```
 
-### use
+### load model, start and stop pipeline
 
-[relevant API calls: load, start, stop](#load-start-stop)
+[relevant API call](#load-start-stop)
 
 ### Outputs
 
