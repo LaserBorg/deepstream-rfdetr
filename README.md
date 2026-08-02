@@ -1,13 +1,110 @@
-# DeepStream RF-DETR — Orin Nano Super
+# INFERENCER
 
-Run [RF-DETR](https://github.com/roboflow/rf-detr) object detection on NVIDIA
-DeepStream, tailored for the **Jetson Orin Nano Super (8 GB)** with
-**JetPack 7.2**.
+RF-DETR inference and object tracking for the Jetson Orin Nano Super.
 
-Forked from [RidgeRun/deepstream-rfdetr](https://github.com/ridgerun/deepstream-rfdetr)
-and stripped down to a single target platform.
+| Capability | Implementation |
+|------------|----------------|
+| Object detection | [RF-DETR](https://github.com/roboflow/rf-detr) with TensorRT |
+| Tracking | NVIDIA NvSORT with persistent tracking IDs |
+| Telemetry | MQTT detection and tracking payloads |
+| Supervision | MediaMTX WebRTC preview |
+| Control | REST API for model preparation and pipeline lifecycle |
+
+Based on [RidgeRun/deepstream-rfdetr](https://github.com/ridgerun/deepstream-rfdetr),
+now using DeepStream 9.1 and JetPack 7.2 on the Orin Nano (sm_87).
 
 ![tracker](docs/track.jpg)
+
+
+## TL;DR
+
+### Run manually on the server
+
+```bash
+./run_pipeline.sh --input hls --output webrtc
+```
+
+### use
+
+[relevant API calls: load, start, stop](#load-start-stop)
+
+### Outputs
+
+MQTT listener:
+```bash
+conda activate py312
+python -u mqtt-listener.py
+```
+
+WebRTC output: [http://192.168.1.71:8889/deepstream-rfdetr/](http://192.168.1.71:8889/deepstream-rfdetr/)
+
+
+## Control API
+
+The control API uses the `INFERENCER_API_KEY` environment variable.
+
+Create the key on the server:
+```bash
+echo "INFERENCER_API_KEY=$(openssl rand -hex 32)" >> .env
+```
+
+Install and start the API as a systemd service on the server:
+```bash
+sudo ./install-service.sh
+```
+
+The service listens on port `8090` and binds to `0.0.0.0` for LAN access.
+Restrict port `8090` with the server firewall to trusted clients. The service
+reads `INFERENCER_API_KEY` from `.env`, starts automatically at boot, and
+restarts after a failure.
+
+Manage the service with:
+```bash
+sudo systemctl status inferencer
+sudo systemctl restart inferencer
+sudo systemctl stop inferencer
+journalctl -u inferencer -f
+```
+
+On a LAN client, add the server address and API key to `~/.bashrc`:
+```bash
+echo 'export INFERENCER_SERVER=<SERVER-IP-HERE>' >> ~/.bashrc
+echo 'export INFERENCER_API_KEY=<YOUR-KEY-HERE>' >> ~/.bashrc
+source ~/.bashrc
+```
+
+`GET /status` is unauthenticated for health checks. Mutating endpoints require
+the bearer token:
+
+### load-start-stop
+
+```bash
+API="http://${INFERENCER_SERVER}:8090"
+KEY="$INFERENCER_API_KEY"
+
+# get status
+curl -s "$API/status"
+
+# load model
+curl -s -X POST "$API/load-model" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rfdetr-medium","precision":"fp16"}'
+
+# start pipeline
+curl -s -X POST "$API/start" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"output":"webrtc"}'
+
+# stop pipeline
+curl -s -X POST "$API/stop" \
+  -H "Authorization: Bearer $KEY"
+```
+
+`/load-model` prepares the ONNX and TensorRT engine; `/start` allocates the
+runtime GPU resources and begins MQTT publishing. `/stop` releases them.
+
 
 ## Target Platform
 
@@ -51,7 +148,7 @@ sudo apt install -y \
   gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad \
   gstreamer1.0-plugins-ugly \
-  gstreamer1.0-libav
+  gstreamer1.0-libav \
   libgstrtspserver-1.0-0
 ```
 

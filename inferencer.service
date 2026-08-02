@@ -1,0 +1,22 @@
+[Unit]
+Description=Inferencer RF-DETR pipeline control API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__REPO__
+Environment=HOME=__HOME__
+Environment=PATH=__HOME__/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PIPELINE_API_HOST=0.0.0.0
+Environment=PIPELINE_API_PORT=8090
+EnvironmentFile=__REPO__/.env
+ExecStart=/usr/bin/python3 __REPO__/pipeline_controller.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

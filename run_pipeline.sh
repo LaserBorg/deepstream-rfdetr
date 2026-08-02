@@ -15,11 +15,14 @@ if [[ -f "$project_root/.env" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 [--config pipeline_config.yml] [--input file|hls] --output file|rtsp|webrtc" >&2
+  echo "Usage: $0 [--config pipeline_config.yml] [--input file|hls] [--model-size size] [--precision fp16|fp32] [--run-until-stopped] --output file|rtsp|webrtc" >&2
 }
 
 output=''
 input_override=''
+model_override=''
+precision_override=''
+run_until_stopped=false
 config_path='pipeline_config.yml'
 while (($#)); do
   case "$1" in
@@ -39,6 +42,28 @@ while (($#)); do
       ;;
     --input=*)
       input_override=${1#--input=}
+      shift
+      ;;
+    --model-size)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      model_override=$2
+      shift 2
+      ;;
+    --model-size=*)
+      model_override=${1#--model-size=}
+      shift
+      ;;
+    --precision)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      precision_override=$2
+      shift 2
+      ;;
+    --precision=*)
+      precision_override=${1#--precision=}
+      shift
+      ;;
+    --run-until-stopped)
+      run_until_stopped=true
       shift
       ;;
     --output)
@@ -138,6 +163,8 @@ hls_uri=${config_values[1]}
 file_uri=${config_values[2]}
 model_size=${config_values[3]}
 model_precision=${config_values[4]}
+[[ -z "$model_override" ]] || model_size=$model_override
+[[ -z "$precision_override" ]] || model_precision=$precision_override
 class_ids=${config_values[5]}
 tracker_algorithm=${config_values[6]}
 detector_threshold=${config_values[7]}
@@ -492,13 +519,15 @@ fi
 "${pipeline[@]}" &
 pipeline_pid=$!
 
-(
-  sleep "$capture_duration_seconds"
-  kill -INT "$pipeline_pid" 2>/dev/null || exit 0
-  sleep "$grace_seconds"
-  kill -KILL "$pipeline_pid" 2>/dev/null || true
-) &
-watchdog_pid=$!
+if [[ "$run_until_stopped" == false ]]; then
+  (
+    sleep "$capture_duration_seconds"
+    kill -INT "$pipeline_pid" 2>/dev/null || exit 0
+    sleep "$grace_seconds"
+    kill -KILL "$pipeline_pid" 2>/dev/null || true
+  ) &
+  watchdog_pid=$!
+fi
 
 if wait "$pipeline_pid"; then
   pipeline_status=0

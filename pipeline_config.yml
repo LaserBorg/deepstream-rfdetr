@@ -4,14 +4,14 @@ source:
   file_uri: "file:///opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4"      # Use a file:// URI when type is "file"
 
 model:
-  size: "rfdetr-medium"       # rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
-  precision: "fp16"           # fp16 | fp32
-  class_ids: [1, 3, 6, 5]      # COCO IDs to keep: person, car, bus, airplane; use [] to keep all classes
+  size: "rfdetr-medium"         # rfdetr-nano | rfdetr-small | rfdetr-medium | rfdetr-large
+  precision: "fp16"             # fp16 | fp32
+  class_ids: [1, 3, 6, 5]       # COCO IDs to keep: person, car, bus, airplane; use [] to keep all classes
 
 tracking:
-  algorithm: "NvSORT"         # NvSORT | IOU | NvDCF | NvDeepSORT
-  detector_threshold: 0.5      # RF-DETR detections below this confidence are discarded
-  min_detector_confidence: 0.5 # Native tracker input confidence floor
+  algorithm: "NvSORT"           # NvSORT | IOU | NvDCF | NvDeepSORT
+  detector_threshold: 0.65      # RF-DETR detections below this confidence are discarded
+  min_detector_confidence: 0.5  # Native tracker input confidence floor
   min_iou_diff_new_target: 0.5780
   min_tracker_confidence: 0.8216
   probation_age: 5
