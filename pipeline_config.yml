@@ -9,13 +9,13 @@ model:
   class_ids: [1, 3, 6, 5]       # COCO IDs to keep: person, car, bus, airplane; use [] to keep all classes
 
 tracking:
-  algorithm: "NvSORT"           # NvSORT | IOU | NvDCF | NvDeepSORT
-  detector_threshold: 0.65      # RF-DETR detections below this confidence are discarded
-  min_detector_confidence: 0.5  # Native tracker input confidence floor
-  min_iou_diff_new_target: 0.5780
-  min_tracker_confidence: 0.8216
-  probation_age: 5
-  max_shadow_tracking_age: 26
+  algorithm: "NvDCF"             # NvSORT | IOU | NvDCF | NvDeepSORT
+  detector_threshold: 0.50      # RF-DETR detections below this confidence are discarded
+  min_detector_confidence: 0.50 # Native tracker input confidence floor
+  min_iou_diff_new_target: 0.30 # Reject more overlapping duplicate tracks
+  min_tracker_confidence: 0.75  # Below this, track enters shadow mode
+  probation_age: 12             # Frames before a new target becomes valid
+  max_shadow_tracking_age: 12   # Drop uncertain tracks sooner
   min_matching_iou: 0.2159
 
 csi_camera:

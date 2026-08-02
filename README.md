@@ -5,7 +5,7 @@ RF-DETR inference and object tracking for the Jetson Orin Nano Super.
 | Capability | Implementation |
 |------------|----------------|
 | Object detection | [RF-DETR](https://github.com/roboflow/rf-detr) with TensorRT |
-| Tracking | NVIDIA NvSORT with persistent tracking IDs |
+| Tracking | NVIDIA NvDCF or NvSORT with persistent tracking IDs |
 | Telemetry | MQTT detection and tracking payloads |
 | Supervision | MediaMTX WebRTC preview |
 | Control | REST API for model preparation and pipeline lifecycle |
@@ -89,7 +89,7 @@ curl -s "$API/status"
 curl -s -X POST "$API/load-model" \
   -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"rfdetr-medium","precision":"fp16"}'
+  -d '{"model":"rfdetr-large","precision":"fp16"}'
 
 # start pipeline
 curl -s -X POST "$API/start" \
@@ -100,10 +100,17 @@ curl -s -X POST "$API/start" \
 # stop pipeline
 curl -s -X POST "$API/stop" \
   -H "Authorization: Bearer $KEY"
+
+# unload model
+curl -s -X POST "$API/unload-model" \
+  -H "Authorization: Bearer $KEY"
 ```
 
 `/load-model` prepares the ONNX and TensorRT engine; `/start` allocates the
-runtime GPU resources and begins MQTT publishing. `/stop` releases them.
+runtime GPU resources and begins MQTT publishing. `/stop` stops the pipeline,
+and `/unload-model` stops it if necessary, clears the selected model, and
+releases its GPU memory. Downloaded weights and TensorRT engines remain cached
+on disk for the next `/load-model` request.
 
 
 ## Target Platform
@@ -315,11 +322,11 @@ Select the low-level tracker in `pipeline_config.yml`:
 ```yaml
 tracking:
   algorithm: "NvSORT"
-  detector_threshold: 0.3
-  min_detector_confidence: 0.3
-  min_iou_diff_new_target: 0.5780
-  min_tracker_confidence: 0.8216
-  probation_age: 5
+  detector_threshold: 0.50
+  min_detector_confidence: 0.50
+  min_iou_diff_new_target: 0.45
+  min_tracker_confidence: 0.75
+  probation_age: 8
   max_shadow_tracking_age: 26
   min_matching_iou: 0.2159
 ```
@@ -337,11 +344,15 @@ The tracker writes IDs directly into DeepStream object metadata. The custom
 metadata bridge copies those IDs into the MQTT payload as `track_id`.
 
 `detector_threshold` controls RF-DETR detections before they reach the tracker.
-The remaining values are native tracker thresholds: the detector confidence
-floor, IoU required when creating a new target, tracker confidence below which
-an object becomes a shadow track, the probation period, the maximum shadow
-tracking age, and the minimum IoU association score. Some values are not used
-by simpler configurations such as `IOU`.
+Keep it equal to `min_detector_confidence` unless intentionally applying a
+second, stricter tracker filter. `min_iou_diff_new_target` is duplicate
+suppression: a new detection is discarded when its IoU with an existing target
+is higher than this value, so lowering it rejects more overlapping duplicate
+tracks. `min_tracker_confidence` is the confidence below which a track enters
+shadow mode; raising it can fragment IDs. `probation_age` sets the frames a new
+target needs before it becomes valid. The remaining values control shadow-track
+lifetime and IoU association. Some values are not used by simpler
+configurations such as `IOU`.
 
 ### 6. MQTT Detection Publishing
 

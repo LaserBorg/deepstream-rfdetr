@@ -1,6 +1,11 @@
 #include <gst/base/gstbasetransform.h>
 #include <gst/gst.h>
 
+#include <array>
+#include <cstdint>
+#include <deque>
+#include <unordered_map>
+
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
 #include "inferencer_detection_meta.h"
@@ -22,6 +27,122 @@ typedef struct _InferencerMsgMetaClass {
 G_DEFINE_TYPE(InferencerMsgMeta, inferencer_msg_meta, GST_TYPE_BASE_TRANSFORM)
 
 enum { PROP_0, PROP_FRAME_INTERVAL };
+
+struct TrackPoint {
+  guint x;
+  guint y;
+};
+
+struct TrackHistory {
+  std::deque<TrackPoint> points;
+  guint64 last_seen_frame;
+};
+
+struct OverlayColor {
+  float red;
+  float green;
+  float blue;
+};
+
+constexpr std::array<OverlayColor, 8> OVERLAY_COLORS{{
+    {0.12F, 0.82F, 0.95F},
+    {0.98F, 0.62F, 0.12F},
+    {0.38F, 0.86F, 0.35F},
+    {0.96F, 0.28F, 0.42F},
+    {0.72F, 0.45F, 0.98F},
+    {0.98F, 0.86F, 0.18F},
+    {0.18F, 0.72F, 0.98F},
+    {0.98F, 0.42F, 0.68F},
+}};
+
+constexpr guint TRAIL_LENGTH = 24;
+constexpr guint TRAIL_MAX_AGE = 45;
+
+std::unordered_map<guint64, TrackHistory> track_history;
+
+NvOSD_ColorParams color_for(OverlayColor color, float alpha) {
+  return NvOSD_ColorParams{color.red, color.green, color.blue, alpha};
+}
+
+void style_object(NvDsObjectMeta *object_meta) {
+  const auto color = OVERLAY_COLORS[static_cast<std::size_t>(object_meta->class_id) %
+                                   OVERLAY_COLORS.size()];
+  object_meta->rect_params.border_width = 2;
+  object_meta->rect_params.border_color = color_for(color, 1.0F);
+  object_meta->rect_params.has_bg_color = 0;
+  object_meta->text_params.font_params.font_name = const_cast<char *>("Sans");
+  object_meta->text_params.font_params.font_size = 10;
+  object_meta->text_params.font_params.font_color =
+      NvOSD_ColorParams{0.02F, 0.02F, 0.02F, 1.0F};
+  object_meta->text_params.set_bg_clr = 1;
+  object_meta->text_params.text_bg_clr = color_for(color, 0.88F);
+}
+
+void add_trail(NvDsBatchMeta *batch_meta, NvDsFrameMeta *frame_meta) {
+  NvDsDisplayMeta *display_meta = nullptr;
+  guint line_count = 0;
+
+  for (NvDsMetaList *object_node = frame_meta->obj_meta_list;
+       object_node != nullptr; object_node = object_node->next) {
+    auto *object_meta = static_cast<NvDsObjectMeta *>(object_node->data);
+    if (object_meta->object_id == UNTRACKED_OBJECT_ID) {
+      continue;
+    }
+
+    const guint64 key = (static_cast<guint64>(frame_meta->pad_index) << 56) |
+                        (object_meta->object_id & G_GUINT64_CONSTANT(0x00FFFFFFFFFFFFFF));
+    auto &history = track_history[key];
+    const TrackPoint point{
+        static_cast<guint>(object_meta->rect_params.left + object_meta->rect_params.width / 2.0F),
+        static_cast<guint>(object_meta->rect_params.top + object_meta->rect_params.height / 2.0F)};
+    if (history.points.empty() || history.points.back().x != point.x ||
+        history.points.back().y != point.y) {
+      history.points.push_back(point);
+      if (history.points.size() > TRAIL_LENGTH) {
+        history.points.pop_front();
+      }
+    }
+    history.last_seen_frame = frame_meta->frame_num;
+
+    if (history.points.size() < 2) {
+      continue;
+    }
+    if (display_meta == nullptr) {
+      display_meta = nvds_acquire_display_meta_from_pool(batch_meta);
+    }
+    const auto color = OVERLAY_COLORS[static_cast<std::size_t>(object_meta->class_id) %
+                                     OVERLAY_COLORS.size()];
+    for (auto point_it = history.points.begin(); point_it + 1 != history.points.end() &&
+                                                    line_count < MAX_ELEMENTS_IN_DISPLAY_META;
+         ++point_it, ++line_count) {
+      auto &line = display_meta->line_params[line_count];
+      line.x1 = point_it->x;
+      line.y1 = point_it->y;
+      line.x2 = (point_it + 1)->x;
+      line.y2 = (point_it + 1)->y;
+      line.line_width = 2;
+      line.line_color = color_for(color, 0.72F);
+    }
+    if (line_count == MAX_ELEMENTS_IN_DISPLAY_META) {
+      break;
+    }
+  }
+
+  if (display_meta != nullptr && line_count > 0) {
+    display_meta->num_lines = line_count;
+    nvds_add_display_meta_to_frame(frame_meta, display_meta);
+  }
+
+  for (auto history_it = track_history.begin(); history_it != track_history.end();) {
+    const auto frame_number = static_cast<guint64>(frame_meta->frame_num);
+    if (frame_number > history_it->second.last_seen_frame &&
+      frame_number - history_it->second.last_seen_frame > TRAIL_MAX_AGE) {
+      history_it = track_history.erase(history_it);
+    } else {
+      ++history_it;
+    }
+  }
+}
 
 static void free_event(NvDsEventMsgMeta *event) {
   g_free(event->ts);
@@ -84,6 +205,11 @@ static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
     if (frame_meta->obj_meta_list == nullptr) {
       continue;
     }
+    for (NvDsMetaList *object_node = frame_meta->obj_meta_list;
+         object_node != nullptr; object_node = object_node->next) {
+      style_object(static_cast<NvDsObjectMeta *>(object_node->data));
+    }
+    add_trail(batch_meta, frame_meta);
     auto *first_object = static_cast<NvDsObjectMeta *>(frame_meta->obj_meta_list->data);
     auto *frame_detections = static_cast<InferencerFrameDetections *>(
       g_malloc0(sizeof(InferencerFrameDetections)));

@@ -234,7 +234,7 @@ mv inferencer_bbox_config.txt.tmp inferencer_bbox_config.txt
 case "$tracker_algorithm" in
   NvSORT) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvSORT.yml" ;;
   IOU) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_IOU.yml" ;;
-  NvDCF) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvDCF_accuracy.yml" ;;
+  NvDCF) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvDCF_perf.yml" ;;
   NvDeepSORT) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvDeepSORT.yml" ;;
   *) echo 'tracking.algorithm must be NvSORT, IOU, NvDCF, or NvDeepSORT.' >&2; exit 2 ;;
 esac

@@ -165,7 +165,7 @@ input-tensor-from-meta=0
 # Primary/Secondary: Both
 #
 # RF-DETR: based on the onnx name and current configuration
-model-engine-file=checkpoints/rfdetr-medium.onnx_b1_gpu0_fp16.engine
+model-engine-file=checkpoints/rfdetr-large.onnx_b1_gpu0_fp16.engine
 
 ##########
 # onnx-file:
@@ -177,7 +177,7 @@ model-engine-file=checkpoints/rfdetr-medium.onnx_b1_gpu0_fp16.engine
 # Network type: All
 # Primary/Secondary: Both
 #
-onnx-file=checkpoints/rfdetr-medium.onnx
+onnx-file=checkpoints/rfdetr-large.onnx
 
 ##########
 # enable-dbscan:

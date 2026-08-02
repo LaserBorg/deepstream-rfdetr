@@ -202,6 +202,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.OK, {"running": False})
                 return
 
+            if self.path == "/unload-model":
+                stop_pipeline()
+                with state_lock:
+                    selected_model = None
+                    selected_precision = None
+                    last_error = None
+                self.send_json(HTTPStatus.OK, {"running": False, "loaded": False})
+                return
+
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "unknown endpoint"})
         except (ValueError, RuntimeError, OSError) as error:
             last_error = str(error)
