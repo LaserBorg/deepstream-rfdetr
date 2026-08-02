@@ -40,7 +40,7 @@ runtime:
 outputs:
   rtsp:
     port: 8554
-    mount_point: "/deepstream-rfdetr"
+    mount_point: "/inferencer"
     encoder:
       width: 640
       height: 360

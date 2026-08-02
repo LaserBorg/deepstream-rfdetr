@@ -1,5 +1,5 @@
-#ifndef RFDETR_DETECTION_META_H_
-#define RFDETR_DETECTION_META_H_
+#ifndef INFERENCER_DETECTION_META_H_
+#define INFERENCER_DETECTION_META_H
 
 #include <glib.h>
 
@@ -11,11 +11,11 @@ typedef struct {
   gfloat height;
   gdouble confidence;
   guint64 tracking_id;
-} RfdetrDetection;
+} InferencerDetection;
 
 typedef struct {
   guint count;
-  RfdetrDetection *detections;
-} RfdetrFrameDetections;
+  InferencerDetection *detections;
+} InferencerFrameDetections;
 
 #endif

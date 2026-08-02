@@ -1,7 +1,7 @@
 #include "nvmsgconv.h"
 
 #include <glib.h>
-#include "rfdetr_detection_meta.h"
+#include "inferencer_detection_meta.h"
 
 #include <algorithm>
 #include <cmath>
@@ -44,7 +44,7 @@ void append_json_string(GString *json, const gchar *value) {
   g_string_append_c(json, '"');
 }
 
-void append_detection(GString *json, const RfdetrDetection *detection,
+void append_detection(GString *json, const InferencerDetection *detection,
                       const Context *context) {
   const auto class_id = static_cast<std::size_t>(std::max(detection->class_id, 0));
   const gchar *class_name = nullptr;
@@ -95,7 +95,7 @@ NvDsPayload *make_payload(const NvDsEvent *events, guint size,
   append_json_string(json, first_event->ts);
   g_string_append(json, ",\"detections\":[");
   gboolean first_detection = TRUE;
-  auto *frame_detections = static_cast<RfdetrFrameDetections *>(first_event->extMsg);
+  auto *frame_detections = static_cast<InferencerFrameDetections *>(first_event->extMsg);
   if (frame_detections != nullptr && frame_detections->count > 0) {
     for (guint index = 0; index < frame_detections->count; ++index) {
       if (!first_detection) {
@@ -109,7 +109,7 @@ NvDsPayload *make_payload(const NvDsEvent *events, guint size,
       if (events[index].metadata == nullptr) {
         continue;
       }
-      RfdetrDetection detection = {
+      InferencerDetection detection = {
           events[index].metadata->objClassId,
           events[index].metadata->bbox.left,
           events[index].metadata->bbox.top,

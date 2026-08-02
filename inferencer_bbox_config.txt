@@ -348,8 +348,8 @@ offsets=123.675;116.28;103.53
 # Network type: Detector
 # Primary/Secondary: Both
 #
-# RF-DETR: Use our deepstream-rfdetr function
-parse-bbox-func-name=deepstream_rfdetr_bbox
+# RF-DETR: Use the Inferencer parser function
+parse-bbox-func-name=inferencer_bbox
 
 ##########
 # parse-bbox-instance-mask-func-name:
@@ -374,7 +374,7 @@ parse-bbox-func-name=deepstream_rfdetr_bbox
 # Network type: All
 # Primary/Secondary: Both
 #
-custom-lib-path=libdeepstream-rfdetr.so
+custom-lib-path=libinferencer.so
 
 ##########
 # model-color-format:

@@ -32,7 +32,7 @@ DEV ?= 0
 MODEL ?= rfdetr-small
 # fp16 | fp32
 PRECISION ?= fp16
-CONFIG := deepstream_rfdetr_bbox_config.txt
+CONFIG := inferencer_bbox_config.txt
 
 CXXFLAGS := -Wall -std=c++20 -fPIC -O3
 
@@ -47,12 +47,12 @@ endif
 LIBS := -lnvinfer
 LDFLAGS := -shared
 
-TARGET := libdeepstream-rfdetr.so
+TARGET := libinferencer.so
 
-SRCS := deepstream_rfdetr_bbox.cpp
+SRCS := inferencer_bbox.cpp
 OBJS := $(SRCS:.cpp=.o)
-MSG_META_TARGET := libgstrfdetrmsgmeta.so
-MSG_CONV_TARGET := librfdetrmsgconv.so
+MSG_META_TARGET := libinferencermsgmeta.so
+MSG_CONV_TARGET := libinferencermsgconv.so
 
 .PHONY: all clean lint format version weights config setup
 
@@ -61,15 +61,15 @@ all: $(TARGET) $(MSG_META_TARGET) $(MSG_CONV_TARGET)
 $(TARGET): $(OBJS) Makefile
 	$(CXX) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
 
-$(MSG_META_TARGET): deepstream_rfdetr_msgmeta.cpp Makefile
+$(MSG_META_TARGET): inferencer_msgmeta.cpp Makefile
 	$(CXX) $(CXXFLAGS) $(shell pkg-config --cflags gstreamer-1.0 gstreamer-base-1.0) \
-		-o $@ deepstream_rfdetr_msgmeta.cpp $(LDFLAGS) \
+		-o $@ inferencer_msgmeta.cpp $(LDFLAGS) \
 		-L$(DS_HOME)/lib -lnvds_meta -lnvdsgst_meta \
 		$(shell pkg-config --libs gstreamer-1.0 gstreamer-base-1.0)
 
-$(MSG_CONV_TARGET): rfdetr_msgconv.cpp Makefile
+$(MSG_CONV_TARGET): inferencer_msgconv.cpp Makefile
 	$(CXX) $(CXXFLAGS) -I$(DS_HOME)/sources/libs/nvmsgconv \
-		-o $@ rfdetr_msgconv.cpp $(LDFLAGS) \
+		-o $@ inferencer_msgconv.cpp $(LDFLAGS) \
 		$(shell pkg-config --cflags --libs glib-2.0)
 
 %.o: %.cpp Makefile

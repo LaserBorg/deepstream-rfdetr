@@ -197,7 +197,7 @@ mqtt_username=${config_values[33]}
 mqtt_password=${config_values[34]}
 deepstream_home="${DS_HOME:-/opt/nvidia/deepstream/deepstream-9.1}"
 mqtt_proto_lib="$deepstream_home/lib/libnvds_mqtt_proto.so"
-msgconv_lib="$project_root/librfdetrmsgconv.so"
+msgconv_lib="$project_root/libinferencermsgconv.so"
 
 [[ "$model_size" == rfdetr-nano || "$model_size" == rfdetr-small || "$model_size" == rfdetr-medium || "$model_size" == rfdetr-large ]] || {
   echo 'model.size must be rfdetr-nano, rfdetr-small, rfdetr-medium, or rfdetr-large.' >&2
@@ -217,8 +217,8 @@ print(";".join(str(class_id) for class_id in range(1, 91) if class_id not in sel
 PY
 )
 awk -v excluded="$excluded_class_ids" 'BEGIN { updated = 0 } /^#?filter-out-class-ids=/ { if (excluded == "") print "#filter-out-class-ids="; else print "filter-out-class-ids=" excluded; updated = 1; next } { print } END { if (!updated && excluded != "") print "filter-out-class-ids=" excluded }' \
-  deepstream_rfdetr_bbox_config.txt > deepstream_rfdetr_bbox_config.txt.tmp
-mv deepstream_rfdetr_bbox_config.txt.tmp deepstream_rfdetr_bbox_config.txt
+  inferencer_bbox_config.txt > inferencer_bbox_config.txt.tmp
+mv inferencer_bbox_config.txt.tmp inferencer_bbox_config.txt
 for threshold in "$detector_threshold" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$min_matching_iou"; do
   [[ "$threshold" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] &&
     awk -v value="$threshold" 'BEGIN { exit !(value >= 0 && value <= 1) }' || {
@@ -229,8 +229,8 @@ done
 [[ "$probation_age" =~ ^[0-9]+$ && "$probation_age" -gt 0 ]] || { echo 'tracking.probation_age must be a positive integer.' >&2; exit 2; }
 [[ "$max_shadow_tracking_age" =~ ^[0-9]+$ && "$max_shadow_tracking_age" -gt 0 ]] || { echo 'tracking.max_shadow_tracking_age must be a positive integer.' >&2; exit 2; }
 awk -v threshold="$detector_threshold" 'BEGIN { updated = 0 } /^pre-cluster-threshold=/ { print "pre-cluster-threshold=" threshold; updated = 1; next } { print } END { if (!updated) exit 1 }' \
-  deepstream_rfdetr_bbox_config.txt > deepstream_rfdetr_bbox_config.txt.tmp
-mv deepstream_rfdetr_bbox_config.txt.tmp deepstream_rfdetr_bbox_config.txt
+  inferencer_bbox_config.txt > inferencer_bbox_config.txt.tmp
+mv inferencer_bbox_config.txt.tmp inferencer_bbox_config.txt
 case "$tracker_algorithm" in
   NvSORT) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_NvSORT.yml" ;;
   IOU) tracker_config="$deepstream_home/samples/configs/deepstream-app/config_tracker_IOU.yml" ;;
@@ -473,7 +473,7 @@ cat > "$mqtt_broker_config" <<EOF
 [message-broker]
 username = $mqtt_username
 password = $mqtt_password
-client-id = deepstream-rfdetr
+client-id = inferencer
 enable-tls = 1
 tls-cafile = /etc/ssl/certs/ca-certificates.crt
 keep-alive = 60
@@ -486,10 +486,10 @@ pipeline=(
   src. ! queue ! identity sync="$identity_sync" ! nvvideoconvert
   ! 'video/x-raw(memory:NVMM),format=NV12' ! mux.sink_0
   nvstreammux name=mux width="$mux_width" height="$mux_height" batch-size="$batch_size" batched-push-timeout=40000 !
-  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt !
+  nvinfer config-file-path=inferencer_bbox_config.txt !
   nvtracker ll-lib-file="$deepstream_home/lib/libnvds_nvmultiobjecttracker.so"
   ll-config-file="$tracker_runtime_config" tracker-width="$mux_width" tracker-height="$mux_height"
-  display-tracking-id=true ! rfdetrmsgmeta frame-interval=1 ! tee name=msgtee
+  display-tracking-id=true ! inferencermsgmeta frame-interval=1 ! tee name=msgtee
   msgtee. ! queue ! nvmsgconv config="$mqtt_msgconv_config" msg2p-lib="$msgconv_lib" payload-type=257 multiple-payloads=false frame-interval=1 !
   nvmsgbroker proto-lib="$mqtt_proto_lib"
   config="$mqtt_broker_config" conn-str="$mqtt_host;$mqtt_port" topic="$mqtt_topic" sync=false

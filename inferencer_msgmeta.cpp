@@ -3,23 +3,23 @@
 
 #include "gstnvdsmeta.h"
 #include "nvdsmeta_schema.h"
-#include "rfdetr_detection_meta.h"
+#include "inferencer_detection_meta.h"
 
 #ifndef PACKAGE
-#define PACKAGE "deepstream-rfdetr"
+#define PACKAGE "inferencer"
 #endif
 
-typedef struct _RfdetrMsgMeta {
+typedef struct _InferencerMsgMeta {
   GstBaseTransform parent;
   guint frame_interval;
   guint64 frame_number;
-} RfdetrMsgMeta;
+} InferencerMsgMeta;
 
-typedef struct _RfdetrMsgMetaClass {
+typedef struct _InferencerMsgMetaClass {
   GstBaseTransformClass parent_class;
-} RfdetrMsgMetaClass;
+} InferencerMsgMetaClass;
 
-G_DEFINE_TYPE(RfdetrMsgMeta, rfdetr_msg_meta, GST_TYPE_BASE_TRANSFORM)
+G_DEFINE_TYPE(InferencerMsgMeta, inferencer_msg_meta, GST_TYPE_BASE_TRANSFORM)
 
 enum { PROP_0, PROP_FRAME_INTERVAL };
 
@@ -27,7 +27,7 @@ static void free_event(NvDsEventMsgMeta *event) {
   g_free(event->ts);
   g_free(event->objectId);
   g_free(event->sensorStr);
-  auto *frame_detections = static_cast<RfdetrFrameDetections *>(event->extMsg);
+  auto *frame_detections = static_cast<InferencerFrameDetections *>(event->extMsg);
   if (frame_detections != nullptr) {
     g_free(frame_detections->detections);
     g_free(frame_detections);
@@ -42,13 +42,13 @@ static gpointer copy_event_meta(gpointer data, gpointer user_data) {
   copy->ts = g_strdup(source_event->ts);
   copy->objectId = g_strdup(source_event->objectId);
   copy->sensorStr = g_strdup(source_event->sensorStr);
-  auto *source_detections = static_cast<RfdetrFrameDetections *>(source_event->extMsg);
+  auto *source_detections = static_cast<InferencerFrameDetections *>(source_event->extMsg);
   if (source_detections != nullptr) {
-    auto *copy_detections = static_cast<RfdetrFrameDetections *>(
+    auto *copy_detections = static_cast<InferencerFrameDetections *>(
         g_memdup2(source_detections, sizeof(*source_detections)));
-    copy_detections->detections = static_cast<RfdetrDetection *>(g_memdup2(
+    copy_detections->detections = static_cast<InferencerDetection *>(g_memdup2(
         source_detections->detections,
-        sizeof(RfdetrDetection) * source_detections->count));
+        sizeof(InferencerDetection) * source_detections->count));
     copy->extMsg = copy_detections;
   }
   return copy;
@@ -67,7 +67,7 @@ static gchar *timestamp_now() {
 }
 
 static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
-  auto *self = reinterpret_cast<RfdetrMsgMeta *>(base);
+  auto *self = reinterpret_cast<InferencerMsgMeta *>(base);
   NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta(buffer);
   if (batch_meta == nullptr) {
     return GST_FLOW_OK;
@@ -85,11 +85,11 @@ static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
       continue;
     }
     auto *first_object = static_cast<NvDsObjectMeta *>(frame_meta->obj_meta_list->data);
-    auto *frame_detections = static_cast<RfdetrFrameDetections *>(
-        g_malloc0(sizeof(RfdetrFrameDetections)));
+    auto *frame_detections = static_cast<InferencerFrameDetections *>(
+      g_malloc0(sizeof(InferencerFrameDetections)));
     frame_detections->count = g_list_length(frame_meta->obj_meta_list);
-    frame_detections->detections = static_cast<RfdetrDetection *>(g_malloc0(
-        sizeof(RfdetrDetection) * frame_detections->count));
+    frame_detections->detections = static_cast<InferencerDetection *>(g_malloc0(
+      sizeof(InferencerDetection) * frame_detections->count));
 
     guint detection_index = 0;
     for (NvDsMetaList *object_node = frame_meta->obj_meta_list; object_node != nullptr;
@@ -138,7 +138,7 @@ static GstFlowReturn transform_ip(GstBaseTransform *base, GstBuffer *buffer) {
 
 static void set_property(GObject *object, guint property_id, const GValue *value,
                          GParamSpec *pspec) {
-  auto *self = reinterpret_cast<RfdetrMsgMeta *>(object);
+  auto *self = reinterpret_cast<InferencerMsgMeta *>(object);
   if (property_id == PROP_FRAME_INTERVAL) {
     self->frame_interval = g_value_get_uint(value);
   } else {
@@ -148,7 +148,7 @@ static void set_property(GObject *object, guint property_id, const GValue *value
 
 static void get_property(GObject *object, guint property_id, GValue *value,
                          GParamSpec *pspec) {
-  auto *self = reinterpret_cast<RfdetrMsgMeta *>(object);
+  auto *self = reinterpret_cast<InferencerMsgMeta *>(object);
   if (property_id == PROP_FRAME_INTERVAL) {
     g_value_set_uint(value, self->frame_interval);
   } else {
@@ -156,7 +156,7 @@ static void get_property(GObject *object, guint property_id, GValue *value,
   }
 }
 
-static void rfdetr_msg_meta_class_init(RfdetrMsgMetaClass *klass) {
+static void inferencer_msg_meta_class_init(InferencerMsgMetaClass *klass) {
   auto *object_class = G_OBJECT_CLASS(klass);
   auto *transform_class = GST_BASE_TRANSFORM_CLASS(klass);
   object_class->set_property = set_property;
@@ -178,17 +178,17 @@ static void rfdetr_msg_meta_class_init(RfdetrMsgMetaClass *klass) {
       gst_pad_template_new("src", GST_PAD_SRC, GST_PAD_ALWAYS, gst_caps_new_any()));
 }
 
-static void rfdetr_msg_meta_init(RfdetrMsgMeta *self) {
+static void inferencer_msg_meta_init(InferencerMsgMeta *self) {
   self->frame_interval = 1;
   self->frame_number = 0;
   gst_base_transform_set_passthrough(GST_BASE_TRANSFORM(self), FALSE);
 }
 
 static gboolean plugin_init(GstPlugin *plugin) {
-  return gst_element_register(plugin, "rfdetrmsgmeta", GST_RANK_NONE,
-                              rfdetr_msg_meta_get_type());
+  return gst_element_register(plugin, "inferencermsgmeta", GST_RANK_NONE,
+                              inferencer_msg_meta_get_type());
 }
 
-GST_PLUGIN_DEFINE(GST_VERSION_MAJOR, GST_VERSION_MINOR, rfdetrmsgmeta,
+GST_PLUGIN_DEFINE(GST_VERSION_MAJOR, GST_VERSION_MINOR, inferencermsgmeta,
                   "RF-DETR DeepStream message metadata", plugin_init, "0.1.0",
                   "MIT", PACKAGE, "https://github.com/")

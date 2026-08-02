@@ -36,7 +36,7 @@ conda activate py312
 python -u mqtt-listener.py
 ```
 
-WebRTC output: [http://192.168.1.71:8889/deepstream-rfdetr/](http://192.168.1.71:8889/deepstream-rfdetr/)
+WebRTC output: [http://192.168.1.71:8889/inferencer/](http://192.168.1.71:8889/inferencer/)
 
 
 ## Control API
@@ -190,7 +190,7 @@ sudo mv mediamtx /usr/local/bin/
 make
 ```
 
-Produces `libdeepstream-rfdetr.so`.
+Produces `libinferencer.so`.
 
 ### 3. Set Up The Model
 
@@ -226,7 +226,7 @@ gst-launch-1.0 -e \
   filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 \
   ! decodebin ! queue ! mux.sink_0 \
   nvstreammux name=mux width=1920 height=1080 batch-size=1 ! \
-  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! \
+  nvinfer config-file-path=inferencer_bbox_config.txt ! \
   queue ! nvdsosd ! nvvideoconvert ! x264enc ! h264parse ! mp4mux ! \
   filesink location=output.mp4
 ```
@@ -261,15 +261,15 @@ only used for the legacy Tears of Steel source. The input defaults to
 
 `file` writes timestamped MP4 segments. `rtsp` and `webrtc` start MediaMTX when
 needed, publish local RTMP, and serve the stream at the configured endpoint,
-such as `rtsp://192.168.1.71:8554/deepstream-rfdetr` for the default
+such as `rtsp://192.168.1.71:8554/inferencer` for the default
 configuration. The path
 and port are controlled by `outputs.rtsp.mount_point` and `outputs.rtsp.port`.
 
 RTSP output, for example in VLC:
-`rtsp://192.168.1.71:8554/deepstream-rfdetr`
+`rtsp://192.168.1.71:8554/inferencer`
 
 WebRTC using MediaMTX, for example in a browser:
-`http://192.168.1.71:8889/deepstream-rfdetr`
+`http://192.168.1.71:8889/inferencer`
 
 The runner advertises `192.168.1.71` for WebRTC and enables TCP fallback for
 the ICE connection. If the device is reached through another LAN address, set
@@ -407,7 +407,7 @@ gst-launch-1.0 -e \
   filesrc location=/opt/nvidia/deepstream/deepstream/samples/streams/sample_1080p_h264.mp4 \
   ! decodebin ! queue ! mux.sink_0 \
   nvstreammux name=mux width=1920 height=1080 batch-size=1 ! queue ! \
-  nvinfer config-file-path=deepstream_rfdetr_bbox_config.txt ! \
+  nvinfer config-file-path=inferencer_bbox_config.txt ! \
   queue ! fakesink
 ```
 
@@ -433,7 +433,7 @@ Measured with the fakesink pipeline above on the 1080p30 sample clip
 
 Edit `model.size` and `model.precision` in `pipeline_config.yml`; the next
 pipeline start downloads the weights if necessary and rewrites
-`deepstream_rfdetr_bbox_config.txt`. You can still run the setup steps
+`inferencer_bbox_config.txt`. You can still run the setup steps
 manually:
 
 ```bash
@@ -452,8 +452,8 @@ make config  MODEL=rfdetr-medium PRECISION=fp16  # update config only
 |------------------------|----------------------------------------------|
 | `net-scale-factor`     | `0.0173520736` (1/255/avg_std)               |
 | `offsets`              | `123.675;116.28;103.53` (ImageNet means×255) |
-| `custom-lib-path`      | `libdeepstream-rfdetr.so` (relative to config) |
-| `parse-bbox-func-name` | `deepstream_rfdetr_bbox`                     |
+| `custom-lib-path`      | `libinferencer.so` (relative to config)       |
+| `parse-bbox-func-name` | `inferencer_bbox`                            |
 | `num-detected-classes` | `91` (COCO 90 + background)                  |
 | `model-color-format`   | `0` (RGB)                                    |
 | `network-type`         | `0` (Detector)                               |

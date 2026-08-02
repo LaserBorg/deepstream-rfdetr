@@ -201,7 +201,7 @@ auto layer_to_span(const NvDsInferLayerInfo &layer) -> std::span<const T> {
 
 }  // namespace
 
-extern "C" auto deepstream_rfdetr_bbox(
+extern "C" auto inferencer_bbox(
     const std::vector<NvDsInferLayerInfo> &layers,
     const NvDsInferNetworkInfo &network,
     const NvDsInferParseDetectionParams &params,
@@ -211,7 +211,7 @@ extern "C" auto deepstream_rfdetr_bbox(
       find_layer(layers, Layer::Classes::NAME, Layer::Classes::TYPE);
 
   if (!layer_boxes || !layer_classes) {
-    std::cerr << "DeepStream-RFDETR: Unable to find output layers named \""
+    std::cerr << "Inferencer: Unable to find output layers named \""
               << Layer::Boxes::NAME << "\" and \"" << Layer::Classes::NAME
               << "\". Did you pass the right engine?\n"
               << "The output layer names are: \n";
@@ -227,7 +227,7 @@ extern "C" auto deepstream_rfdetr_bbox(
 
   if (Layer::Classes::Dims::NUM_DIMS != layer_classes_num_dims ||
       Layer::Boxes::Dims::NUM_DIMS != layer_boxes_num_dims) {
-    std::cerr << "DeepStream-RFDETR: layer number of dimensions don't match. "
+    std::cerr << "Inferencer: layer number of dimensions don't match. "
                  "Did you pass in the correct model?\n"
               << "\t- " << Layer::Classes::NAME << ": "
               << Layer::Classes::Dims::NUM_DIMS << " (expected) <-> "
@@ -244,7 +244,7 @@ extern "C" auto deepstream_rfdetr_bbox(
   auto num_box_params = layer_boxes_dims[Layer::Boxes::Dims::BOXES];
 
   if (Layer::Boxes::Box::SIZE != num_box_params) {
-    std::cerr << "DeepStream-RFDETR: The boxes tensor has a "
+    std::cerr << "Inferencer: The boxes tensor has a "
                  "different box dimension size ("
               << num_box_params << ") than the expected ("
               << Layer::Boxes::Box::SIZE << "). Did you pass "
@@ -259,7 +259,7 @@ extern "C" auto deepstream_rfdetr_bbox(
   auto num_classes = layer_classes_dims[Layer::Classes::Dims::CLASSES];
 
   if (params.numClassesConfigured != num_classes) {
-    std::cerr << "DeepStream-RFDETR: The classes tensor has a "
+    std::cerr << "Inferencer: The classes tensor has a "
                  "different dimension size ("
               << num_classes << ") than the expected ("
               << params.numClassesConfigured << "). Check your "
@@ -268,7 +268,7 @@ extern "C" auto deepstream_rfdetr_bbox(
   }
 
   if (num_detections_boxes != num_detections_classes) {
-    std::cerr << "DeepStream-RFDETR: The max number of detections "
+    std::cerr << "Inferencer: The max number of detections "
                  "in the box ("
               << num_detections_boxes
               << ") and "
@@ -305,6 +305,6 @@ extern "C" auto deepstream_rfdetr_bbox(
 
 // Unused, just having the compiler check the signature
 namespace {
-[[maybe_unused]] const NvDsInferParseCustomFunc check_deepstream_rfdetr_bbox =
-    deepstream_rfdetr_bbox;
+[[maybe_unused]] const NvDsInferParseCustomFunc check_inferencer_bbox =
+  inferencer_bbox;
 }
