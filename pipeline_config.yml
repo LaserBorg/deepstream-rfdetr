@@ -12,11 +12,13 @@ tracking:
   algorithm: "NvDCF"             # NvSORT | IOU | NvDCF | NvDeepSORT
   detector_threshold: 0.50      # RF-DETR detections below this confidence are discarded
   min_detector_confidence: 0.50 # Native tracker input confidence floor
-  min_iou_diff_new_target: 0.30 # Reject more overlapping duplicate tracks
+  min_iou_diff_new_target: 0.15 # Reject more overlapping duplicate tracks
   min_tracker_confidence: 0.75  # Below this, track enters shadow mode
-  probation_age: 12             # Frames before a new target becomes valid
-  max_shadow_tracking_age: 12   # Drop uncertain tracks sooner
-  min_matching_iou: 0.2159
+  probation_age: 30             # Frames before a new target becomes valid
+  early_termination_age: 10     # Shadow frames allowed while a track is tentative
+  max_shadow_tracking_age: 24   # Frames to retain a track during detector dropouts
+  min_matching_iou: 0.35        # Minimum IoU for detector-to-track association
+  min_matching_score_overall: 0.60 # Reject weaker detector-to-track associations
 
 csi_camera:
   sensor_id: 0

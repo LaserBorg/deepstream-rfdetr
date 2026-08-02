@@ -15,11 +15,12 @@ if [[ -f "$project_root/.env" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 [--config pipeline_config.yml] [--input file|hls] [--model-size size] [--precision fp16|fp32] [--run-until-stopped] --output file|rtsp|webrtc" >&2
+  echo "Usage: $0 [--config pipeline_config.yml] [--input file|hls] [--hls-uri URL] [--model-size size] [--precision fp16|fp32] [--run-until-stopped] --output file|rtsp|webrtc" >&2
 }
 
 output=''
 input_override=''
+hls_uri_override=''
 model_override=''
 precision_override=''
 run_until_stopped=false
@@ -42,6 +43,15 @@ while (($#)); do
       ;;
     --input=*)
       input_override=${1#--input=}
+      shift
+      ;;
+    --hls-uri)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      hls_uri_override=$2
+      shift 2
+      ;;
+    --hls-uri=*)
+      hls_uri_override=${1#--hls-uri=}
       shift
       ;;
     --model-size)
@@ -125,8 +135,10 @@ try:
         config.get("tracking", {}).get("min_iou_diff_new_target", 0.5),
         config.get("tracking", {}).get("min_tracker_confidence", 0.5),
         config.get("tracking", {}).get("probation_age", 4),
+        config.get("tracking", {}).get("early_termination_age", 1),
         config.get("tracking", {}).get("max_shadow_tracking_age", 38),
         config.get("tracking", {}).get("min_matching_iou", 0.0),
+        config.get("tracking", {}).get("min_matching_score_overall", 0.0),
         source.get("stream_offset_seconds", 0),
         runtime["hls_segment_duration_seconds"],
         runtime["file_segment_duration_seconds"],
@@ -157,7 +169,7 @@ for value in values:
 PY
 )
 
-[[ ${#config_values[@]} -eq 35 ]] || { echo 'Unable to read pipeline configuration.' >&2; exit 2; }
+[[ ${#config_values[@]} -eq 37 ]] || { echo 'Unable to read pipeline configuration.' >&2; exit 2; }
 source_type=${config_values[0]}
 hls_uri=${config_values[1]}
 file_uri=${config_values[2]}
@@ -172,29 +184,31 @@ min_detector_confidence=${config_values[8]}
 min_iou_diff_new_target=${config_values[9]}
 min_tracker_confidence=${config_values[10]}
 probation_age=${config_values[11]}
-max_shadow_tracking_age=${config_values[12]}
-min_matching_iou=${config_values[13]}
-stream_offset_seconds=${config_values[14]}
-hls_segment_duration_seconds=${config_values[15]}
-file_segment_duration_seconds=${config_values[16]}
-capture_duration_seconds=${config_values[17]}
-grace_seconds=${config_values[18]}
-identity_sync=${config_values[19]}
-batch_size=${config_values[20]}
-mux_width=${config_values[21]}
-mux_height=${config_values[22]}
-rtsp_port=${config_values[23]}
-rtsp_mount_point=${config_values[24]}
-output_width=${config_values[25]}
-output_height=${config_values[26]}
-bitrate_mbps=${config_values[27]}
-iframeinterval=${config_values[28]}
-profile=${config_values[29]}
-mqtt_topic=${config_values[30]}
-mqtt_host=${config_values[31]}
-mqtt_port=${config_values[32]}
-mqtt_username=${config_values[33]}
-mqtt_password=${config_values[34]}
+early_termination_age=${config_values[12]}
+max_shadow_tracking_age=${config_values[13]}
+min_matching_iou=${config_values[14]}
+min_matching_score_overall=${config_values[15]}
+stream_offset_seconds=${config_values[16]}
+hls_segment_duration_seconds=${config_values[17]}
+file_segment_duration_seconds=${config_values[18]}
+capture_duration_seconds=${config_values[19]}
+grace_seconds=${config_values[20]}
+identity_sync=${config_values[21]}
+batch_size=${config_values[22]}
+mux_width=${config_values[23]}
+mux_height=${config_values[24]}
+rtsp_port=${config_values[25]}
+rtsp_mount_point=${config_values[26]}
+output_width=${config_values[27]}
+output_height=${config_values[28]}
+bitrate_mbps=${config_values[29]}
+iframeinterval=${config_values[30]}
+profile=${config_values[31]}
+mqtt_topic=${config_values[32]}
+mqtt_host=${config_values[33]}
+mqtt_port=${config_values[34]}
+mqtt_username=${config_values[35]}
+mqtt_password=${config_values[36]}
 deepstream_home="${DS_HOME:-/opt/nvidia/deepstream/deepstream-9.1}"
 mqtt_proto_lib="$deepstream_home/lib/libnvds_mqtt_proto.so"
 msgconv_lib="$project_root/libinferencermsgconv.so"
@@ -219,7 +233,7 @@ PY
 awk -v excluded="$excluded_class_ids" 'BEGIN { updated = 0 } /^#?filter-out-class-ids=/ { if (excluded == "") print "#filter-out-class-ids="; else print "filter-out-class-ids=" excluded; updated = 1; next } { print } END { if (!updated && excluded != "") print "filter-out-class-ids=" excluded }' \
   inferencer_bbox_config.txt > inferencer_bbox_config.txt.tmp
 mv inferencer_bbox_config.txt.tmp inferencer_bbox_config.txt
-for threshold in "$detector_threshold" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$min_matching_iou"; do
+for threshold in "$detector_threshold" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$min_matching_iou" "$min_matching_score_overall"; do
   [[ "$threshold" =~ ^([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] &&
     awk -v value="$threshold" 'BEGIN { exit !(value >= 0 && value <= 1) }' || {
     echo 'Tracking thresholds must be in the range 0..1.' >&2
@@ -227,6 +241,7 @@ for threshold in "$detector_threshold" "$min_detector_confidence" "$min_iou_diff
   }
 done
 [[ "$probation_age" =~ ^[0-9]+$ && "$probation_age" -gt 0 ]] || { echo 'tracking.probation_age must be a positive integer.' >&2; exit 2; }
+[[ "$early_termination_age" =~ ^[0-9]+$ && "$early_termination_age" -gt 0 ]] || { echo 'tracking.early_termination_age must be a positive integer.' >&2; exit 2; }
 [[ "$max_shadow_tracking_age" =~ ^[0-9]+$ && "$max_shadow_tracking_age" -gt 0 ]] || { echo 'tracking.max_shadow_tracking_age must be a positive integer.' >&2; exit 2; }
 awk -v threshold="$detector_threshold" 'BEGIN { updated = 0 } /^pre-cluster-threshold=/ { print "pre-cluster-threshold=" threshold; updated = 1; next } { print } END { if (!updated) exit 1 }' \
   inferencer_bbox_config.txt > inferencer_bbox_config.txt.tmp
@@ -240,18 +255,20 @@ case "$tracker_algorithm" in
 esac
 [[ -f "$tracker_config" ]] || { echo "Native tracker config not found: $tracker_config" >&2; exit 2; }
 tracker_runtime_config=$(mktemp --suffix=.yml)
-python3 - "$tracker_config" "$tracker_runtime_config" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$probation_age" "$max_shadow_tracking_age" "$min_matching_iou" <<'PY'
+python3 - "$tracker_config" "$tracker_runtime_config" "$min_detector_confidence" "$min_iou_diff_new_target" "$min_tracker_confidence" "$probation_age" "$early_termination_age" "$max_shadow_tracking_age" "$min_matching_iou" "$min_matching_score_overall" <<'PY'
 import re
 import sys
 
-source, destination, min_detector, min_iou_new, min_tracker, probation, shadow_age, matching_iou = sys.argv[1:]
+source, destination, min_detector, min_iou_new, min_tracker, probation, early_termination, shadow_age, matching_iou, matching_overall = sys.argv[1:]
 replacements = {
   "BaseConfig.minDetectorConfidence": min_detector,
   "TargetManagement.minIouDiff4NewTarget": min_iou_new,
   "TargetManagement.minTrackerConfidence": min_tracker,
   "TargetManagement.probationAge": probation,
+  "TargetManagement.earlyTerminationAge": early_termination,
   "TargetManagement.maxShadowTrackingAge": shadow_age,
   "DataAssociator.minMatchingScore4Iou": matching_iou,
+  "DataAssociator.minMatchingScore4Overall": matching_overall,
 }
 section = None
 with open(source, encoding="utf-8") as input_file, open(destination, "w", encoding="utf-8") as output_file:
@@ -276,6 +293,9 @@ make all MODEL="$model_size" PRECISION="$model_precision"
 
 if [[ -n "$input_override" ]]; then
   source_type=$input_override
+fi
+if [[ -n "$hls_uri_override" ]]; then
+  hls_uri=$hls_uri_override
 fi
 
 case "$source_type" in

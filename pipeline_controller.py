@@ -14,6 +14,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent
 RUNNER = ROOT / "run_pipeline.sh"
@@ -53,9 +54,23 @@ def validate_model(model: Any, precision: Any) -> tuple[str, str]:
     return model, precision
 
 
+def validate_hls_uri(hls_uri: Any) -> str:
+    if not isinstance(hls_uri, str) or not hls_uri.strip():
+        raise ValueError("hls_uri must be a non-empty HTTP(S) URL")
+    parsed = urlparse(hls_uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("hls_uri must be a non-empty HTTP(S) URL")
+    return hls_uri
+
+
 def reap_pipeline() -> None:
-    global pipeline
-    if pipeline is not None and pipeline.poll() is not None:
+    global last_error, pipeline
+    if pipeline is not None:
+        return_code = pipeline.poll()
+        if return_code is None:
+            return
+        if return_code != 0 and last_error is None:
+            last_error = f"pipeline exited with status {return_code}; check journalctl -u inferencer"
         pipeline = None
 
 
@@ -190,6 +205,8 @@ class Handler(BaseHTTPRequestHandler):
                         selected_model = model
                         selected_precision = precision
                     command = [str(RUNNER), "--output", request.get("output", "rtsp"), "--run-until-stopped"]
+                    if "hls_uri" in request:
+                        command += ["--hls-uri", validate_hls_uri(request["hls_uri"])]
                     if selected_model is not None:
                         command += ["--model-size", selected_model, "--precision", selected_precision]
                     pipeline = subprocess.Popen(command, cwd=ROOT, start_new_session=True)
